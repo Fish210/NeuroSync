@@ -178,6 +178,7 @@ class SessionSummary(BaseModel):
     state_breakdown: dict[str, int]  # state -> seconds
     topics: list[TopicSummary]
     adaptation_events: list[AdaptationEvent]
+    narrative: str = ""
 
 
 class StopSessionResponse(BaseModel):

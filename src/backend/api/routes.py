@@ -134,6 +134,16 @@ async def stop_session(body: dict) -> StopSessionResponse:
     adaptation_events = event_log.get_state_transitions(session_id)
     summary_data["adaptation_events"] = adaptation_events
 
+    # Generate AI narrative summary
+    from agents.summarizer import generate_narrative
+    narrative = await generate_narrative(
+        topic=session.topic,
+        duration_seconds=summary_data.get("duration_seconds", 0),
+        state_breakdown=summary_data.get("state_breakdown", {}),
+        topics_covered=summary_data.get("topics", []),
+    )
+    summary_data["narrative"] = narrative
+
     summary = SessionSummary(**summary_data)
 
     event_log.record("session_stopped", session_id)
