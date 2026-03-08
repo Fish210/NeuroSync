@@ -1,0 +1,140 @@
+# Requirements: NeuroSync
+
+**Defined:** 2026-03-08
+**Core Value:** The tutor adapts to the learner's brain in real time: EEG signal → cognitive state → tutor strategy change → spoken and written response.
+
+## v1 Requirements
+
+### EEG Pipeline
+
+- [x] **EEG-01**: Muse headband streams EEG data via muselsl + LSL to Python FastAPI backend
+- [x] **EEG-02**: Backend extracts alpha, beta, theta, gamma band powers from a rolling time window
+- [x] **EEG-03**: Pretrained SVM classifier maps 9 band-power features (beta/theta, beta/alpha, etc.) to one of three states: FOCUSED, OVERLOADED, DISENGAGED; heuristic fallback if model not found
+- [x] **EEG-04**: Dwell-time filter requires 3+ consecutive windows in the same state before triggering a strategy change (prevents signal flicker from flooding the AI layer)
+- [x] **EEG-05**: BLE watchdog detects silent Bluetooth dropout and sets system to a known safe state
+
+### AI Tutor Agents
+
+- [x] **AGENT-01**: Planner agent generates a detailed initial lesson plan at session start (topic blocks, progression order, example questions, difficulty levels)
+- [x] **AGENT-02**: Speaker agent handles real-time voice conversation, responding to student input aligned to current planner strategy
+- [x] **AGENT-03**: When EEG cognitive state changes, backend prompts planner agent to update the lesson plan and current strategy (async background update, 10s cooldown)
+- [x] **AGENT-04**: Speaker agent returns structured output: { strategy, tone, response } for predictable downstream handling
+- [x] **AGENT-05**: SPEAKER_RUNNING lock prevents planner from mutating strategy while speaker is actively generating a response
+- [x] **AGENT-06**: Both agents use Featherless API; speaker uses a fast small model (7–8B), planner uses a larger model (70B)
+
+### Voice I/O
+
+- [ ] **VOICE-01**: Student speaks into browser microphone; Web Speech API transcribes speech to text and sends to backend (frontend)
+- [x] **VOICE-02**: Tutor voice responses are synthesized via Hume AI TTS REST API, streamed as MP3 chunks, and auto-played in the browser
+- [ ] **VOICE-03**: Audio context is initialized inside a click handler (Start Session button) to comply with browser autoplay policy (frontend)
+- [x] **VOICE-04**: Tutor voice response triggers automatically on every AI adaptation event, without student action
+- [x] **VOICE-05**: Voice Activity Detection (VAD) detects when student begins speaking mid-tutor-playback and immediately stops Hume AI audio (barge-in / interruption)
+- [x] **VOICE-06**: After interruption, speaker agent receives the student's new input and responds without requiring any manual action — conversation resumes seamlessly
+
+### Whiteboard
+
+- [ ] **WBRD-01**: LiveKit powers real-time whiteboard data synchronization between frontend clients and backend
+- [ ] **WBRD-02**: Tutor can write text and KaTeX-rendered equations to the whiteboard
+- [ ] **WBRD-03**: Tutor can import and display diagrams/images on the whiteboard
+- [ ] **WBRD-04**: Student can type text onto the whiteboard
+- [ ] **WBRD-05**: Student can import and upload images to the whiteboard
+- [ ] **WBRD-06**: Student can annotate the whiteboard (draw/mark up content) and send annotations to the tutor
+
+### Frontend UI
+
+- [ ] **UI-01**: Large cognitive state indicator shows current state (FOCUSED / OVERLOADED / DISENGAGED) prominently on screen
+- [ ] **UI-02**: Live EEG band power bars (alpha, beta, theta, gamma, delta) update asynchronously in real time
+- [ ] **UI-03**: Adaptation event log shows a timestamped feed of state transitions and strategy changes (e.g. "OVERLOADED → Simplify → Speaker adjusted")
+- [ ] **UI-04**: Tutor conversation transcript panel shows the full back-and-forth exchange
+- [ ] **UI-05**: Whiteboard panel occupies a prominent area of the screen alongside the conversation
+- [ ] **UI-06**: Session start button initializes audio context and begins the tutoring session; session stop gracefully ends the loop
+
+### Session Management
+
+- [x] **SESS-01**: POST /start-session triggers planner to generate initial lesson plan and returns session ID
+- [x] **SESS-02**: WebSocket (FastAPI) pushes real-time cognitive state, whiteboard deltas, conversation turns, and audio events to the frontend
+- [x] **SESS-03**: All session state (lesson plan, cognitive state, conversation history) is held in memory — no database required
+- [x] **SESS-04**: POST /stop-session cleanly ends EEG ingestion, agent loops, and WebSocket connection
+- [x] **SESS-05**: Backend tracks cognitive state per active topic throughout the session (timestamps + state at each topic transition)
+- [x] **SESS-06**: On session end, planner generates a post-session summary: total time per state (FOCUSED/OVERLOADED/DISENGAGED), topics covered, and per-topic comprehension inference (derived from cognitive state during that topic)
+- [ ] **SESS-07**: Post-session summary screen displays: state timeline chart, topics list with comprehension rating, key adaptation events
+- [ ] **SESS-08**: User can export the post-session summary to a PDF from the browser
+
+## v2 Requirements
+
+### Reliability & Polish
+
+- **DEMO-01**: Manual cognitive state override button for demo emergencies (force-set state without EEG)
+- **DEMO-02**: Graceful "EEG disconnected" indicator with reconnect prompt
+- **DEMO-03**: Canned demo fallback (pre-recorded adaptation sequence if hardware fails)
+
+### Enhanced Interaction
+
+- **ENH-01**: Video feed of student (via LiveKit) visible to tutor context
+- **ENH-02**: Student voice sentiment analysis to supplement EEG state signal
+- **ENH-03**: Session replay / export of adaptation log
+
+## Out of Scope
+
+| Feature | Reason |
+|---------|--------|
+| User authentication / accounts | Hackathon demo — no login needed |
+| Database / persistent storage | In-memory only; no long-term session data |
+| Freehand drawing canvas | Whiteboard is text + diagrams + annotations; not a full drawing app |
+| ML-based EEG classification | Heuristic thresholds only — faster to build, easier to explain to judges |
+| Medical accuracy claims | Project uses EEG as approximation only |
+| Mobile app | Web-first demo only |
+| Multi-user rooms | Single student + AI tutor session |
+
+## Traceability
+
+| Requirement | Phase | Status |
+|-------------|-------|--------|
+| EEG-01 | Phase 1 | Complete |
+| EEG-02 | Phase 1 | Complete |
+| EEG-03 | Phase 1 | Complete |
+| EEG-04 | Phase 1 | Complete |
+| EEG-05 | Phase 1 | Complete |
+| AGENT-01 | Phase 2 | Complete |
+| AGENT-02 | Phase 2 | Complete |
+| AGENT-03 | Phase 2 | Complete |
+| AGENT-04 | Phase 2 | Complete |
+| AGENT-05 | Phase 2 | Complete |
+| AGENT-06 | Phase 2 | Complete |
+| SESS-01 | Phase 2 | Complete |
+| SESS-02 | Phase 2 | Complete |
+| SESS-03 | Phase 2 | Complete |
+| SESS-04 | Phase 2 | Complete |
+| SESS-05 | Phase 2 | Complete |
+| VOICE-01 | Phase 3 | Frontend |
+| VOICE-02 | Phase 3 | Complete |
+| VOICE-03 | Phase 3 | Frontend |
+| VOICE-04 | Phase 3 | Complete |
+| VOICE-05 | Phase 3 | Complete |
+| VOICE-06 | Phase 3 | Complete |
+| WBRD-01 | Phase 4 | Frontend |
+| WBRD-02 | Phase 4 | Frontend |
+| WBRD-03 | Phase 4 | Frontend |
+| WBRD-04 | Phase 4 | Frontend |
+| WBRD-05 | Phase 4 | Frontend |
+| WBRD-06 | Phase 4 | Frontend |
+| UI-01 | Phase 4 | Frontend |
+| UI-02 | Phase 4 | Frontend |
+| UI-03 | Phase 4 | Frontend |
+| UI-04 | Phase 4 | Frontend |
+| UI-05 | Phase 4 | Frontend |
+| UI-06 | Phase 4 | Frontend |
+| SESS-06 | Phase 5 | Complete |
+| SESS-07 | Phase 5 | Frontend |
+| SESS-08 | Phase 5 | Frontend |
+
+**Coverage:**
+- v1 requirements: 37 total (EEG: 5, AGENT: 6, VOICE: 6, WBRD: 6, UI: 6, SESS: 8)
+- Mapped to phases: 37
+- Unmapped: 0
+
+**Note:** Previous count stated 36; actual count is 37 (SESS-01 through SESS-08 = 8 SESS requirements).
+
+---
+*Requirements defined: 2026-03-08*
+*Last updated: 2026-03-08 — backend phases 1–3 complete; EEG-03 updated to SVM classifier; VOICE-02/05 updated to Hume AI; traceability statuses updated*

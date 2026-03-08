@@ -1,0 +1,224 @@
+"""
+REST API routes.
+
+Endpoints:
+    GET  /health          — smoke check
+    POST /start-session   — create session, return lesson plan stub
+    POST /stop-session    — end session, return summary
+"""
+from __future__ import annotations
+
+import json
+import logging
+import os
+import time
+from pathlib import Path
+
+from fastapi import APIRouter, HTTPException
+
+from api.models import (
+    LessonBlock,
+    LessonPlan,
+    SessionEventPayload,
+    SessionSummary,
+    StartSessionRequest,
+    StartSessionResponse,
+    StopSessionRequest,
+    StopSessionResponse,
+    WebSocketEnvelope,
+)
+from session.events import event_log
+from session.store import session_store
+from session.tracker import TopicStateTracker
+
+logger = logging.getLogger(__name__)
+
+router = APIRouter()
+
+# Path to stub lesson plans (used in Phase 1 before Featherless planner)
+LESSON_STUB_PATH = Path(__file__).parent.parent.parent.parent / "config" / "backend" / "lesson_stub.json"
+
+# In-memory state log per session: list of (timestamp, state)
+_session_state_logs: dict[str, list[tuple[float, str]]] = {}
+_session_trackers: dict[str, TopicStateTracker] = {}
+
+
+def _load_lesson_stub(topic: str) -> dict:
+    """Load lesson plan from config stub file."""
+    try:
+        with open(LESSON_STUB_PATH) as f:
+            stubs = json.load(f)
+        # Try exact match, then first available
+        if topic in stubs:
+            return stubs[topic]
+        key = next(iter(stubs))
+        logger.warning("Topic '%s' not in stub, using '%s'", topic, key)
+        return stubs[key]
+    except FileNotFoundError:
+        logger.warning("lesson_stub.json not found, using minimal fallback")
+        return {
+            "topic": topic,
+            "blocks": [
+                {"id": "block-1", "title": f"Introduction to {topic}", "difficulty": 1},
+                {"id": "block-2", "title": f"Core concepts of {topic}", "difficulty": 2},
+                {"id": "block-3", "title": f"Practice: {topic}", "difficulty": 3},
+            ],
+            "current_block": "block-1",
+        }
+
+
+@router.get("/health")
+async def health() -> dict:
+    """Smoke check — returns OK and active session count."""
+    return {
+        "status": "ok",
+        "sessions": len(session_store.list_ids()),
+        "timestamp": time.time(),
+    }
+
+
+@router.post("/start-session", response_model=StartSessionResponse)
+async def start_session(request: StartSessionRequest) -> StartSessionResponse:
+    """
+    Create a new tutoring session.
+
+    Phase 1: returns static lesson plan stub from config/backend/lesson_stub.json
+    Phase 2: will call Featherless planner to generate plan dynamically
+    """
+    from agents.planner import generate_lesson_plan
+    lesson_data = await generate_lesson_plan(request.topic)
+
+    lesson_plan = LessonPlan(
+        topic=lesson_data["topic"],
+        blocks=[LessonBlock(**b) for b in lesson_data["blocks"]],
+        current_block=lesson_data["current_block"],
+    )
+
+    session = session_store.create(
+        topic=request.topic,
+        lesson_plan=lesson_plan.model_dump(),
+    )
+
+    # Initialize tracker and state log
+    _session_trackers[session.session_id] = TopicStateTracker(lesson_plan.model_dump())
+    _session_state_logs[session.session_id] = [(time.time(), "DISENGAGED")]
+
+    event_log.record(
+        "session_started",
+        session.session_id,
+        {"topic": request.topic},
+    )
+
+    logger.info("Session started: %s topic=%s", session.session_id, request.topic)
+
+    return StartSessionResponse(
+        session_id=session.session_id,
+        lesson_plan=lesson_plan,
+    )
+
+
+@router.post("/stop-session", response_model=StopSessionResponse)
+async def stop_session(body: StopSessionRequest) -> StopSessionResponse:
+    """
+    End a tutoring session and return the post-session summary.
+    """
+    session_id = body.session_id
+    session = session_store.get(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail=f"Session not found: {session_id}")
+
+    tracker = _session_trackers.get(session_id)
+    state_log = _session_state_logs.get(session_id, [])
+
+    summary_data: dict = {"duration_seconds": 0, "state_breakdown": {}, "topics": []}
+    if tracker and state_log:
+        summary_data = tracker.compute_summary(state_log)
+
+    adaptation_events = event_log.get_state_transitions(session_id)
+    summary_data["adaptation_events"] = adaptation_events
+
+    # Generate AI narrative summary
+    from agents.summarizer import generate_narrative
+    narrative = await generate_narrative(
+        topic=session.topic,
+        duration_seconds=summary_data.get("duration_seconds", 0),
+        state_breakdown=summary_data.get("state_breakdown", {}),
+        topics_covered=summary_data.get("topics", []),
+    )
+    summary_data["narrative"] = narrative
+
+    summary = SessionSummary(**summary_data)
+
+    event_log.record("session_stopped", session_id)
+
+    # Notify any still-connected frontend clients before deleting the session
+    from api.websocket import manager
+    await manager.broadcast(
+        session_id,
+        WebSocketEnvelope.session_event(
+            SessionEventPayload(type="session_ended", data={"session_id": session_id})
+        ),
+    )
+
+    session_store.delete(session_id)
+    _session_trackers.pop(session_id, None)
+    _session_state_logs.pop(session_id, None)
+
+    return StopSessionResponse(summary=summary)
+
+
+def record_state_for_session(session_id: str, state: str) -> None:
+    """Called by WebSocket hub when a new state update arrives."""
+    log = _session_state_logs.get(session_id)
+    if log is not None:
+        log.append((time.time(), state))
+    tracker = _session_trackers.get(session_id)
+    if tracker:
+        tracker.record(state)
+
+
+_VALID_STATES = {"FOCUSED", "OVERLOADED", "DISENGAGED"}
+
+
+@router.post("/override-state")
+async def override_state(body: dict) -> dict:
+    """
+    DEMO-01: Manually override the cognitive state for demo emergencies.
+
+    Body: { "session_id": "...", "state": "FOCUSED|OVERLOADED|DISENGAGED" }
+    Broadcasts a STATE_UPDATE immediately and triggers planner strategy update.
+    """
+    session_id = body.get("session_id", "")
+    state = body.get("state", "")
+
+    if state not in _VALID_STATES:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Invalid state '{state}'. Must be one of {sorted(_VALID_STATES)}",
+        )
+
+    session = session_store.get(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail=f"Session not found: {session_id}")
+
+    # Update store + state log
+    await session_store.update_state(session_id, state)
+    record_state_for_session(session_id, state)
+
+    # Broadcast STATE_UPDATE to frontend
+    from api.models import EEGBandPowers, StateUpdatePayload, WebSocketEnvelope
+    from api.websocket import manager
+
+    payload = StateUpdatePayload(
+        state=state,
+        confidence=1.0,
+        bands=EEGBandPowers(alpha=0.0, beta=0.0, theta=0.0, gamma=0.0, delta=0.0),
+    )
+    await manager.broadcast(session_id, WebSocketEnvelope.state_update(payload))
+
+    # Trigger immediate planner strategy update
+    from agents.planner import update_strategy_for_state
+    await update_strategy_for_state(session_id, state)
+
+    logger.info("State override: session=%s state=%s", session_id, state)
+    return {"session_id": session_id, "state": state, "overridden": True}

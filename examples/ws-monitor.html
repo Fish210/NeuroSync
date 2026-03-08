@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>NeuroSync WS Monitor</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: monospace; background: #0d1117; color: #c9d1d9; padding: 20px; }
+    h1 { color: #58a6ff; margin-bottom: 16px; font-size: 18px; }
+    .controls { display: flex; gap: 8px; margin-bottom: 16px; align-items: center; flex-wrap: wrap; }
+    input { background: #161b22; color: #c9d1d9; border: 1px solid #30363d; padding: 6px 10px; border-radius: 4px; width: 340px; font-family: monospace; }
+    button { background: #238636; color: #fff; border: none; padding: 6px 16px; border-radius: 4px; cursor: pointer; font-family: monospace; }
+    button:hover { background: #2ea043; }
+    button.danger { background: #b62324; }
+    button.danger:hover { background: #d1383a; }
+    .status { padding: 4px 10px; border-radius: 12px; font-size: 12px; font-weight: bold; }
+    .status.connected { background: #196c2e; color: #3fb950; }
+    .status.disconnected { background: #3d1c1c; color: #f85149; }
+    .panels { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    .panel { background: #161b22; border: 1px solid #30363d; border-radius: 6px; padding: 12px; }
+    .panel h2 { font-size: 13px; color: #8b949e; margin-bottom: 10px; text-transform: uppercase; letter-spacing: 1px; }
+    #state-badge { font-size: 24px; font-weight: bold; padding: 8px 16px; border-radius: 6px; text-align: center; margin-bottom: 10px; transition: background 0.3s; }
+    .FOCUSED { background: #196c2e; color: #3fb950; }
+    .OVERLOADED { background: #3d1c1c; color: #f85149; }
+    .DISENGAGED { background: #2d2d00; color: #e3b341; }
+    .bands { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; margin-top: 8px; }
+    .band { text-align: center; }
+    .band-label { font-size: 10px; color: #8b949e; }
+    .band-bar-wrap { height: 60px; background: #0d1117; border-radius: 3px; display: flex; align-items: flex-end; overflow: hidden; }
+    .band-bar { width: 100%; transition: height 0.5s; background: #58a6ff; border-radius: 2px 2px 0 0; }
+    .band-value { font-size: 10px; color: #8b949e; margin-top: 2px; }
+    #log { background: #0d1117; border: 1px solid #30363d; border-radius: 4px; padding: 10px; height: 300px; overflow-y: auto; font-size: 12px; }
+    .log-entry { padding: 3px 0; border-bottom: 1px solid #21262d; }
+    .log-entry .ts { color: #484f58; margin-right: 8px; }
+    .log-entry .et { font-weight: bold; margin-right: 8px; min-width: 160px; display: inline-block; }
+    .STATE_UPDATE .et { color: #58a6ff; }
+    .SESSION_EVENT .et { color: #e3b341; }
+    .CONVERSATION_TURN .et { color: #3fb950; }
+    .INTERRUPT .et { color: #f85149; }
+    .WHITEBOARD_DELTA .et { color: #bc8cff; }
+    #transcript { height: 200px; overflow-y: auto; font-size: 13px; }
+    .turn { padding: 6px 0; border-bottom: 1px solid #21262d; }
+    .turn .speaker { font-weight: bold; margin-right: 6px; }
+    .turn.tutor .speaker { color: #58a6ff; }
+    .turn.student .speaker { color: #3fb950; }
+    .send-area { margin-top: 8px; display: flex; gap: 6px; }
+    .send-area input { flex: 1; }
+  </style>
+</head>
+<body>
+  <h1>NeuroSync WebSocket Monitor</h1>
+
+  <div class="controls">
+    <input id="ws-url" value="ws://localhost:8000/ws/session/" placeholder="WebSocket URL">
+    <input id="session-id" value="demo" placeholder="session_id" style="width:120px">
+    <button onclick="connect()">Connect</button>
+    <button class="danger" onclick="disconnect()">Disconnect</button>
+    <span id="status-badge" class="status disconnected">DISCONNECTED</span>
+  </div>
+
+  <div style="margin-bottom:12px; display:flex; gap:8px;">
+    <button onclick="startSession()">POST /start-session</button>
+    <button onclick="stopSession()">POST /stop-session</button>
+  </div>
+
+  <div class="panels">
+    <div class="panel">
+      <h2>Cognitive State</h2>
+      <div id="state-badge" class="DISENGAGED">DISENGAGED</div>
+      <div style="font-size:12px;color:#8b949e;" id="confidence">confidence: —</div>
+      <div class="bands">
+        <div class="band">
+          <div class="band-label">delta</div>
+          <div class="band-bar-wrap"><div class="band-bar" id="bar-delta" style="height:0%"></div></div>
+          <div class="band-value" id="val-delta">0.00</div>
+        </div>
+        <div class="band">
+          <div class="band-label">theta</div>
+          <div class="band-bar-wrap"><div class="band-bar" id="bar-theta" style="height:0%"></div></div>
+          <div class="band-value" id="val-theta">0.00</div>
+        </div>
+        <div class="band">
+          <div class="band-label">alpha</div>
+          <div class="band-bar-wrap"><div class="band-bar" id="bar-alpha" style="height:0%"></div></div>
+          <div class="band-value" id="val-alpha">0.00</div>
+        </div>
+        <div class="band">
+          <div class="band-label">beta</div>
+          <div class="band-bar-wrap"><div class="band-bar" id="bar-beta" style="height:0%"></div></div>
+          <div class="band-value" id="val-beta">0.00</div>
+        </div>
+        <div class="band">
+          <div class="band-label">gamma</div>
+          <div class="band-bar-wrap"><div class="band-bar" id="bar-gamma" style="height:0%"></div></div>
+          <div class="band-value" id="val-gamma">0.00</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h2>Conversation</h2>
+      <div id="transcript"></div>
+      <div class="send-area">
+        <input id="speech-input" placeholder="Type student speech..." onkeyup="if(event.key==='Enter')sendSpeech()">
+        <button onclick="sendSpeech()">Send</button>
+      </div>
+    </div>
+
+    <div class="panel" style="grid-column: 1 / -1;">
+      <h2>Event Log</h2>
+      <div id="log"></div>
+    </div>
+  </div>
+
+  <script>
+    let ws = null;
+
+    function connect() {
+      const base = document.getElementById('ws-url').value;
+      const sid = document.getElementById('session-id').value;
+      const url = base.endsWith('/') ? base + sid : base + '/' + sid;
+
+      ws = new WebSocket(url);
+      ws.onopen = () => setStatus(true);
+      ws.onclose = () => setStatus(false);
+      ws.onerror = (e) => logRaw('WS error', JSON.stringify(e.type));
+      ws.onmessage = (e) => handleMessage(e.data);
+    }
+
+    function disconnect() {
+      if (ws) { ws.close(); ws = null; }
+    }
+
+    function setStatus(connected) {
+      const el = document.getElementById('status-badge');
+      el.textContent = connected ? 'CONNECTED' : 'DISCONNECTED';
+      el.className = 'status ' + (connected ? 'connected' : 'disconnected');
+    }
+
+    function handleMessage(raw) {
+      let msg;
+      try { msg = JSON.parse(raw); } catch(e) { logRaw('parse error', raw); return; }
+
+      const et = msg.event_type;
+      const p = msg.payload;
+      const ts = new Date(msg.timestamp * 1000).toLocaleTimeString();
+
+      logEntry(et, JSON.stringify(p).substring(0, 120), ts);
+
+      if (et === 'STATE_UPDATE') updateState(p);
+      if (et === 'CONVERSATION_TURN') addTurn(p);
+    }
+
+    function updateState(p) {
+      const badge = document.getElementById('state-badge');
+      badge.textContent = p.state;
+      badge.className = p.state;
+      document.getElementById('confidence').textContent = 'confidence: ' + (p.confidence * 100).toFixed(0) + '%';
+
+      const bands = p.bands || {};
+      ['alpha', 'beta', 'theta', 'gamma', 'delta'].forEach(b => {
+        const v = bands[b] || 0;
+        document.getElementById('bar-' + b).style.height = (v * 400) + '%';
+        document.getElementById('val-' + b).textContent = v.toFixed(3);
+      });
+    }
+
+    function addTurn(p) {
+      const el = document.getElementById('transcript');
+      const div = document.createElement('div');
+      div.className = 'turn ' + p.speaker;
+      div.innerHTML = '<span class="speaker">' + p.speaker.toUpperCase() + ':</span>' + p.text;
+      el.appendChild(div);
+      el.scrollTop = el.scrollHeight;
+    }
+
+    function logEntry(et, summary, ts) {
+      const log = document.getElementById('log');
+      const div = document.createElement('div');
+      div.className = 'log-entry ' + et;
+      div.innerHTML = '<span class="ts">' + ts + '</span><span class="et">' + et + '</span>' + summary;
+      log.appendChild(div);
+      log.scrollTop = log.scrollHeight;
+    }
+
+    function logRaw(label, msg) {
+      logEntry(label, msg, new Date().toLocaleTimeString());
+    }
+
+    function sendSpeech() {
+      const input = document.getElementById('speech-input');
+      const text = input.value.trim();
+      if (!text || !ws) return;
+      ws.send(JSON.stringify({
+        event_type: 'STUDENT_SPEECH',
+        payload: { text, session_id: document.getElementById('session-id').value }
+      }));
+      addTurn({ speaker: 'student', text });
+      input.value = '';
+    }
+
+    async function startSession() {
+      const sid = document.getElementById('session-id').value;
+      const res = await fetch('http://localhost:8000/start-session', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ topic: 'derivatives' })
+      });
+      const data = await res.json();
+      document.getElementById('session-id').value = data.session_id || sid;
+      logRaw('POST /start-session', JSON.stringify(data).substring(0, 200));
+    }
+
+    async function stopSession() {
+      const sid = document.getElementById('session-id').value;
+      const res = await fetch('http://localhost:8000/stop-session', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ session_id: sid })
+      });
+      const data = await res.json();
+      logRaw('POST /stop-session', JSON.stringify(data).substring(0, 200));
+    }
+  </script>
+</body>
+</html>
