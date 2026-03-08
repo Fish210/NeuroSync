@@ -3,6 +3,8 @@
 import { useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import type { ConversationTurnPayload } from "@/lib/types";
+import { ShiningText } from "@/components/ui/shining-text";
+import { TextGenerateEffect } from "@/components/ui/text-generate-effect";
 
 const strategyBadge: Record<string, string> = {
   continue:            "bg-slate-700 text-slate-300",
@@ -56,7 +58,11 @@ export function ConversationTranscript({
               ))}
             </span>
           )}
-          {speakingState}
+          {speakingState === "speaking" ? (
+            <ShiningText text="Speaking" className="text-[10px] font-medium uppercase tracking-wide" />
+          ) : (
+            <span>{speakingState}</span>
+          )}
         </span>
       </div>
 
@@ -93,7 +99,17 @@ export function ConversationTranscript({
                       </span>
                     )}
                   </div>
-                  <p className="leading-relaxed">{turn.text}</p>
+                  {isTutor && i === turns.length - 1 ? (
+                    <TextGenerateEffect
+                      key={turn.text}
+                      words={turn.text}
+                      duration={0.3}
+                      filter={false}
+                      className="text-sm font-normal"
+                    />
+                  ) : (
+                    <p className="leading-relaxed">{turn.text}</p>
+                  )}
                 </motion.li>
               );
             })}

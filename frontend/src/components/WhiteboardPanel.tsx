@@ -1,11 +1,44 @@
 "use client";
 
+import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import type { WhiteboardDeltaPayload } from "@/lib/types";
 
 interface Props {
   blocks?: WhiteboardDeltaPayload[];
   currentState?: string;
+  onStudentInput?: (text: string) => void;
+}
+
+function StudentInput({ onSubmit }: { onSubmit: (text: string) => void }) {
+  const [value, setValue] = useState("");
+
+  const handleSubmit = () => {
+    const trimmed = value.trim();
+    if (!trimmed) return;
+    onSubmit(trimmed);
+    setValue("");
+  };
+
+  return (
+    <div className="relative z-10 border-t border-white/10 px-4 py-3 flex gap-2">
+      <input
+        type="text"
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        onKeyDown={(e) => e.key === "Enter" && handleSubmit()}
+        placeholder="Type your response or question…"
+        className="flex-1 rounded-xl border border-white/10 bg-slate-800/70 px-3 py-2 text-sm text-white placeholder-slate-600 outline-none focus:border-cyan-400/40 focus:ring-1 focus:ring-cyan-400/15 transition"
+      />
+      <button
+        onClick={handleSubmit}
+        disabled={!value.trim()}
+        className="rounded-xl bg-cyan-500/20 border border-cyan-400/30 px-4 py-2 text-xs font-semibold text-cyan-300 hover:bg-cyan-500/30 transition disabled:opacity-40 cursor-pointer"
+      >
+        Send
+      </button>
+    </div>
+  );
 }
 
 const stateGradient: Record<string, string> = {
@@ -14,7 +47,7 @@ const stateGradient: Record<string, string> = {
   DISENGAGED: "from-amber-500/5 to-transparent",
 };
 
-export function WhiteboardPanel({ blocks = [], currentState }: Props) {
+export function WhiteboardPanel({ blocks = [], currentState, onStudentInput }: Props) {
   return (
     <section className="relative h-full overflow-hidden rounded-[28px] border border-white/10 bg-slate-900 shadow-[0_20px_60px_rgba(0,0,0,0.4)]">
       {/* Ambient gradient */}
@@ -29,14 +62,8 @@ export function WhiteboardPanel({ blocks = [], currentState }: Props) {
           <p className="text-xs text-slate-500 mt-0.5">Shared tutoring workspace</p>
         </div>
         <div className="flex items-center gap-2">
-          {["Pen", "Text", "Erase", "Clear"].map((tool) => (
-            <button
-              key={tool}
-              className="rounded-lg border border-white/10 bg-slate-800/80 px-3 py-1.5 text-xs text-slate-400 transition hover:bg-slate-700 hover:text-white"
-            >
-              {tool}
-            </button>
-          ))}
+          <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
+          <span className="text-xs text-slate-500">AI-driven content</span>
         </div>
       </div>
 
@@ -93,13 +120,24 @@ export function WhiteboardPanel({ blocks = [], currentState }: Props) {
                     </span>
                     <span className="text-[9px] text-slate-600">{block.type}</span>
                   </div>
-                  <div className="leading-relaxed">{block.content}</div>
+                  <div className="leading-relaxed">
+                    {block.type === "katex" ? (
+                      <code className="block text-amber-300/90 font-mono text-[13px] leading-relaxed whitespace-pre-wrap bg-amber-400/5 rounded-lg p-2">
+                        {block.content}
+                      </code>
+                    ) : (
+                      block.content
+                    )}
+                  </div>
                 </motion.div>
               ))}
             </AnimatePresence>
           </div>
         )}
       </div>
+      {onStudentInput && (
+        <StudentInput onSubmit={onStudentInput} />
+      )}
     </section>
   );
 }

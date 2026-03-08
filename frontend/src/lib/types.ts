@@ -41,9 +41,12 @@ export interface SessionEventPayload {
   type:
     | "session_started"
     | "session_ended"
+    | "eeg_connected"
     | "eeg_disconnected"
     | "eeg_reconnected"
-    | "lesson_ready";
+    | "lesson_ready"
+    | "contact_quality"
+    | "error";
   data: Record<string, unknown>;
 }
 

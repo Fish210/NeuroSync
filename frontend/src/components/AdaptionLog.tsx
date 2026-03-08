@@ -19,7 +19,7 @@ export default function AdaptationLog({ entries }: { entries: string[] }) {
           <AnimatePresence initial={false}>
             {entries.map((entry, i) => (
               <motion.div
-                key={`${entry}-${i}`}
+                key={i}
                 initial={{ opacity: 0, x: -8 }}
                 animate={{ opacity: 1, x: 0 }}
                 transition={{ duration: 0.2 }}

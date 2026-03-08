@@ -2,6 +2,7 @@
 
 import { motion, AnimatePresence } from "framer-motion";
 import type { CognitiveState } from "@/lib/types";
+import { SegmentedProgress } from "@/components/ui/progress-bar";
 
 const config: Record<CognitiveState, {
   label: string;
@@ -44,9 +45,11 @@ const config: Record<CognitiveState, {
 export default function CognitiveStateIndicator({
   state,
   confidence,
+  strategy,
 }: {
   state: CognitiveState;
   confidence?: number;
+  strategy?: string;
 }) {
   const c = config[state];
   const pct = confidence !== undefined ? Math.round(confidence * 100) : null;
@@ -84,20 +87,21 @@ export default function CognitiveStateIndicator({
 
       <div className="text-xs text-slate-500 mb-4">{c.description}</div>
 
-      {pct !== null && (
-        <div>
-          <div className="flex justify-between text-xs text-slate-400 mb-1.5">
-            <span>Confidence</span>
-            <span className="font-semibold text-slate-200">{pct}%</span>
-          </div>
-          <div className="h-1.5 rounded-full bg-slate-800">
-            <motion.div
-              className={`h-full rounded-full ${c.bar}`}
-              animate={{ width: `${pct}%` }}
-              transition={{ duration: 0.5, ease: "easeOut" }}
-            />
-          </div>
+      {strategy && (
+        <div className="mt-2 rounded-lg border border-white/8 bg-slate-800/50 px-2.5 py-1.5 text-[10px] font-mono text-slate-400">
+          Strategy: <span className="text-slate-200">{strategy.replace(/_/g, " ")}</span>
         </div>
+      )}
+
+      {pct !== null && (
+        <SegmentedProgress
+          value={pct}
+          segments={10}
+          label="Confidence"
+          showPercentage
+          showDemo={false}
+          color={c.bar}
+        />
       )}
     </div>
   );

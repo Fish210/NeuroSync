@@ -3,6 +3,7 @@ import type { SessionSummary } from "@/lib/api";
 
 const comprehensionColor: Record<string, string> = {
   strong: "text-emerald-400",
+  moderate: "text-cyan-400",
   needs_review: "text-amber-400",
   incomplete: "text-rose-400",
 };
@@ -92,12 +93,38 @@ export default function PostSessionSummary({
               </div>
             </div>
           )}
+
+          {summary.adaptation_events?.length > 0 && (
+            <div>
+              <h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-400">
+                Adaptation Timeline
+              </h3>
+              <div className="space-y-1.5">
+                {summary.adaptation_events.slice(0, 8).map((ev, i) => (
+                  <div
+                    key={i}
+                    className="flex items-center gap-3 rounded-xl border border-white/8 bg-slate-800/40 px-4 py-2.5 text-xs"
+                  >
+                    <span className={`inline-block h-2 w-2 rounded-full flex-shrink-0 ${
+                      ev.to_state === "FOCUSED" ? "bg-emerald-400" :
+                      ev.to_state === "OVERLOADED" ? "bg-rose-400" : "bg-amber-400"
+                    }`} />
+                    <span className="text-slate-500 font-mono w-16 flex-shrink-0">
+                      {new Date(ev.timestamp * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
+                    </span>
+                    <span className="text-slate-400">{ev.from_state} → <span className="text-slate-200">{ev.to_state}</span></span>
+                    <span className="ml-auto text-slate-500 text-[10px] capitalize">{ev.strategy_applied?.replace(/_/g, " ")}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
 
         <div className="border-t border-white/10 px-6 py-4 flex justify-end">
           <button
             onClick={onDismiss}
-            className="rounded-2xl bg-white px-6 py-2.5 text-sm font-semibold text-slate-950 hover:opacity-90 transition"
+            className="rounded-2xl bg-white px-6 py-2.5 text-sm font-semibold text-slate-950 hover:opacity-90 transition cursor-pointer"
           >
             New Session
           </button>

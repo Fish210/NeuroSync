@@ -64,3 +64,15 @@ export async function stopSession(session_id: string): Promise<StopSessionRespon
   }
   return res.json();
 }
+
+export async function overrideState(sessionId: string, state: string): Promise<void> {
+  const res = await fetch(`${API_BASE}/override-state`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ session_id: sessionId, state }),
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`override-state failed: ${res.status} ${text}`);
+  }
+}

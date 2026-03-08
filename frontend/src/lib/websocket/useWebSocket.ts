@@ -4,7 +4,7 @@ import { useEffect, useRef, useState, useMemo, useCallback } from "react";
 import { WSClient } from "./client";
 import { AudioPlayer } from "@/lib/voice/audio-player";
 import { Microphone } from "@/lib/voice/microphone";
-import { startSession, stopSession } from "@/lib/api";
+import { startSession, stopSession, overrideState as overrideStateFn } from "@/lib/api";
 import type { SessionSummary } from "@/lib/api";
 import type {
   CognitiveState,
@@ -30,6 +30,8 @@ export function useNeuroSyncSocket() {
   const [speakingState, setSpeakingState] = useState<"idle" | "speaking" | "interrupted">("idle");
   const [summary, setSummary] = useState<SessionSummary | null>(null);
   const [topic, setTopic] = useState<string>("");
+  const [eegStatus, setEegStatus] = useState<"connected" | "disconnected" | "unknown">("unknown");
+  const [currentStrategy, setCurrentStrategy] = useState<string>("");
 
   const log = useCallback((entry: string) =>
     setAdaptationLog((prev) => [entry, ...prev].slice(0, 20)), []);
@@ -73,6 +75,9 @@ export function useNeuroSyncSocket() {
         if (message.event_type === "CONVERSATION_TURN") {
           setTurns((prev) => [...prev, message.payload].slice(-20));
           log(`${time} — ${message.payload.triggered_by_state} → ${message.payload.strategy}`);
+          if (message.payload.speaker === "tutor") {
+            setCurrentStrategy(message.payload.strategy);
+          }
         }
 
         if (message.event_type === "WHITEBOARD_DELTA") {
@@ -105,6 +110,18 @@ export function useNeuroSyncSocket() {
         if (message.event_type === "SESSION_EVENT") {
           log(`${time} — Session: ${message.payload.type}`);
           if (message.payload.type === "session_started") setSpeakingState("idle");
+          if (message.payload.type === "eeg_connected") {
+            setEegStatus("connected");
+            log(`${time} — EEG connected`);
+          }
+          if (message.payload.type === "eeg_disconnected") {
+            setEegStatus("disconnected");
+            log(`${time} — EEG disconnected`);
+          }
+          if (message.payload.type === "eeg_reconnected") {
+            setEegStatus("connected");
+            log(`${time} — EEG reconnected`);
+          }
         }
       },
       (s) => {
@@ -169,6 +186,29 @@ export function useNeuroSyncSocket() {
     }
   }, [log]);
 
+  const sendWhiteboardText = useCallback((text: string) => {
+    if (clientRef.current === null) return;
+    clientRef.current.send({
+      event_type: "STUDENT_WHITEBOARD_DELTA",
+      payload: {
+        author: "student",
+        type: "text",
+        content: text,
+        position: { x: 20, y: 620 },
+        id: `student-${Date.now()}`,
+      },
+    });
+  }, []);
+
+  const overrideState = useCallback(async (state: string) => {
+    if (sessionIdRef.current === null) return;
+    try {
+      await overrideStateFn(sessionIdRef.current, state);
+    } catch (err) {
+      console.error("overrideState failed:", err);
+    }
+  }, []);
+
   // Auto-reset interrupted state
   useEffect(() => {
     if (speakingState === "interrupted") {
@@ -200,6 +240,10 @@ export function useNeuroSyncSocket() {
     speakingState,
     summary,
     topic,
+    eegStatus,
+    currentStrategy,
+    sendWhiteboardText,
+    overrideState,
     start,
     stop,
   };
