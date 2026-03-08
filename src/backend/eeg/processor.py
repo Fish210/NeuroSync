@@ -130,7 +130,7 @@ class EEGProcessor:
                 powers[band_name] = 0.0
             else:
                 # Integrate PSD over the band (trapezoidal rule)
-                powers[band_name] = float(np.trapz(psd[mask], freqs[mask]))
+                powers[band_name] = float(np.trapezoid(psd[mask], freqs[mask]))
 
         # Normalize to avoid scale issues (relative band powers)
         total = sum(powers.values()) + 1e-10
