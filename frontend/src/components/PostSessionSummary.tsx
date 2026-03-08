@@ -1,3 +1,4 @@
+import { motion, AnimatePresence } from "framer-motion";
 import type { SessionSummary } from "@/lib/api";
 
 const comprehensionColor: Record<string, string> = {
@@ -27,7 +28,13 @@ export default function PostSessionSummary({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
-      <div className="w-full max-w-2xl rounded-[28px] border border-white/10 bg-slate-900 shadow-2xl overflow-hidden">
+      <motion.div
+        className="w-full max-w-2xl rounded-[28px] border border-white/10 bg-slate-900 shadow-2xl overflow-hidden"
+        initial={{ opacity: 0, scale: 0.96 }}
+        animate={{ opacity: 1, scale: 1 }}
+        exit={{ opacity: 0, scale: 0.96 }}
+        transition={{ duration: 0.25 }}
+      >
         <div className="border-b border-white/10 px-6 py-5">
           <h2 className="text-2xl font-bold text-white">Session Complete</h2>
           <p className="mt-1 text-sm text-slate-400">
@@ -52,9 +59,11 @@ export default function PostSessionSummary({
                 <div key={state} className="flex items-center gap-3">
                   <span className="w-24 text-sm text-slate-300 capitalize">{state.toLowerCase()}</span>
                   <div className="flex-1 h-3 rounded-full bg-slate-800">
-                    <div
+                    <motion.div
                       className={`h-full rounded-full ${stateColor[state] || "bg-slate-500"}`}
-                      style={{ width: `${Math.round((secs / totalSec) * 100)}%` }}
+                      initial={{ width: 0 }}
+                      animate={{ width: `${Math.round((secs / totalSec) * 100)}%` }}
+                      transition={{ duration: 0.6, ease: "easeOut" }}
                     />
                   </div>
                   <span className="w-16 text-right text-sm text-slate-400">{fmt(secs)}</span>
@@ -93,7 +102,7 @@ export default function PostSessionSummary({
             New Session
           </button>
         </div>
-      </div>
+      </motion.div>
     </div>
   );
 }
