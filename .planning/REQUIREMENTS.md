@@ -101,10 +101,17 @@
 | AGENT-04 | Phase 2 | Pending |
 | AGENT-05 | Phase 2 | Pending |
 | AGENT-06 | Phase 2 | Pending |
+| SESS-01 | Phase 2 | Pending |
+| SESS-02 | Phase 2 | Pending |
+| SESS-03 | Phase 2 | Pending |
+| SESS-04 | Phase 2 | Pending |
+| SESS-05 | Phase 2 | Pending |
 | VOICE-01 | Phase 3 | Pending |
 | VOICE-02 | Phase 3 | Pending |
 | VOICE-03 | Phase 3 | Pending |
 | VOICE-04 | Phase 3 | Pending |
+| VOICE-05 | Phase 3 | Pending |
+| VOICE-06 | Phase 3 | Pending |
 | WBRD-01 | Phase 4 | Pending |
 | WBRD-02 | Phase 4 | Pending |
 | WBRD-03 | Phase 4 | Pending |
@@ -117,22 +124,17 @@
 | UI-04 | Phase 4 | Pending |
 | UI-05 | Phase 4 | Pending |
 | UI-06 | Phase 4 | Pending |
-| SESS-01 | Phase 2 | Pending |
-| SESS-02 | Phase 2 | Pending |
-| SESS-03 | Phase 2 | Pending |
-| SESS-04 | Phase 2 | Pending |
-| VOICE-05 | Phase 3 | Pending |
-| VOICE-06 | Phase 3 | Pending |
-| SESS-05 | Phase 2 | Pending |
 | SESS-06 | Phase 5 | Pending |
 | SESS-07 | Phase 5 | Pending |
 | SESS-08 | Phase 5 | Pending |
 
 **Coverage:**
-- v1 requirements: 36 total
-- Mapped to phases: 36
-- Unmapped: 0 ✓
+- v1 requirements: 37 total (EEG: 5, AGENT: 6, VOICE: 6, WBRD: 6, UI: 6, SESS: 8)
+- Mapped to phases: 37
+- Unmapped: 0
+
+**Note:** Previous count stated 36; actual count is 37 (SESS-01 through SESS-08 = 8 SESS requirements).
 
 ---
 *Requirements defined: 2026-03-08*
-*Last updated: 2026-03-08 after adding voice interruption + post-session summary*
+*Last updated: 2026-03-08 — traceability finalized with phase assignments, count corrected to 37*
