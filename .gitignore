@@ -11,7 +11,9 @@ __pycache__/
 *.egg-info/
 
 # Environment
-/config/backend/.env
+.env
+.env.*
+/config/backend/.env.example
 
 # macOS
 .DS_Store
