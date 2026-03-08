@@ -23,7 +23,7 @@
 - `lock.py` — `SPEAKER_RUNNING` asyncio lock; prevents planner from mutating session strategy while speaker is generating
 
 #### Voice Pipeline (`/backend/voice/`)
-- `tts.py` — ElevenLabs streaming TTS; takes speaker `response` text; streams audio chunks back over WebSocket as `AUDIO_CHUNK` messages
+- `tts.py` — Hume TTS; takes speaker `response` text; calls Hume REST API (`POST /v0/tts`), receives MP3 audio, splits into chunks, streams back over WebSocket as `AUDIO_CHUNK` messages
 - `vad.py` — Voice Activity Detection; receives student audio signal level from frontend; fires `INTERRUPT` event to cut active TTS stream and re-route to speaker agent
 
 #### Session Management (`/backend/session/`)
@@ -120,7 +120,7 @@ Fires when speaker agent produces a response.
 ```
 
 #### `AUDIO_CHUNK`
-Streams ElevenLabs TTS in chunks. Frontend assembles and plays.
+Streams Hume TTS MP3 audio in chunks. Frontend assembles and plays.
 ```json
 {
   "event_type": "AUDIO_CHUNK",
