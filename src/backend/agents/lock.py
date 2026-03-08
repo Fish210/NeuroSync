@@ -11,15 +11,21 @@ Usage:
 """
 from __future__ import annotations
 
+import logging
 from contextlib import asynccontextmanager
 
 from session.store import session_store
+
+logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
 async def speaker_running(session_id: str):
     """Acquire the per-session speaker lock for the duration of a speaker call."""
-    session = session_store.require(session_id)
+    session = session_store.get(session_id)
+    if session is None:
+        logger.warning("speaker_running: session %s no longer exists — skipping", session_id)
+        return
     async with session.speaker_lock:
         yield
         # After speaker completes, apply any pending strategy update from planner

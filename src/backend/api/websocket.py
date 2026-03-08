@@ -185,14 +185,25 @@ async def _handle_student_speech(session_id: str, payload: dict) -> None:
     session_store.add_turn(session_id, "student", text)
 
     # Generate tutor response under speaker lock
-    async with speaker_running(session_id):
-        result = await generate_response(
-            student_text=text,
-            current_state=session.current_state,
-            current_strategy=session.current_strategy.strategy,
-            topic=session.topic,
-            conversation=session.conversation,
+    try:
+        async with speaker_running(session_id):
+            result = await generate_response(
+                student_text=text,
+                current_state=session.current_state,
+                current_strategy=session.current_strategy.strategy,
+                topic=session.topic,
+                conversation=session.conversation,
+            )
+    except Exception as exc:
+        logger.error("Speaker generation failed for session %s: %s", session_id, exc, exc_info=True)
+        from api.models import SessionEventPayload
+        await manager.broadcast(
+            session_id,
+            WebSocketEnvelope.session_event(
+                SessionEventPayload(type="error", data={"source": "speaker", "message": str(exc)})
+            ),
         )
+        return
 
     # Store tutor turn
     session_store.add_turn(

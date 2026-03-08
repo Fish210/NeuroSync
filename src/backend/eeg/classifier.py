@@ -32,8 +32,18 @@ logger = logging.getLogger(__name__)
 FOCUS_HIGH_THRESHOLD = float(os.getenv("FOCUS_HIGH_THRESHOLD", "1.4"))
 FOCUS_LOW_THRESHOLD = float(os.getenv("FOCUS_LOW_THRESHOLD", "0.7"))
 
-# cognitive_load = beta + gamma (relative to baseline)
-LOAD_HIGH_THRESHOLD = float(os.getenv("LOAD_HIGH_THRESHOLD", "1.6"))
+# overload_score = (rel_beta + rel_gamma) / rel_alpha
+#
+# Alpha suppression is the most reliable EEG marker of cognitive overload:
+#   - High beta + gamma indicates active processing / arousal
+#   - Simultaneously suppressed alpha indicates inability to relax → overload
+#   - Dividing by rel_alpha makes the score invariant to absolute power scale
+#
+# Baseline calibration: at rest, all rel values = 1.0 → score = 2.0/1.0 = 2.0
+# Threshold of 3.5 fires when load rises ~75% above the neutral 2.0 baseline.
+# Without personal baseline, apply a more conservative 1.5× multiplier (5.25)
+# to reduce false positives from inter-individual alpha variability.
+OVERLOAD_RATIO_THRESHOLD = float(os.getenv("OVERLOAD_RATIO_THRESHOLD", "3.5"))
 
 # Minimum baseline windows before classification starts
 BASELINE_MIN_WINDOWS = int(os.getenv("BASELINE_MIN_WINDOWS", "5"))
@@ -128,6 +138,7 @@ class CognitiveStateClassifier:
     """
 
     _MODEL_PATH = Path(__file__).parent.parent.parent.parent / "config" / "backend" / "classifier.joblib"
+    _BACKUP_DIR = Path(__file__).parent.parent.parent.parent / "config" / "backend" / "backups"
 
     def __init__(self) -> None:
         self.calibrator = BaselineCalibrator()
@@ -136,26 +147,35 @@ class CognitiveStateClassifier:
         self._load_pretrained()
 
     def _load_pretrained(self) -> None:
-        """Try to load the trained SVM model. Silently falls back to heuristics."""
-        try:
-            import joblib
-            data = joblib.load(self._MODEL_PATH)
-            self._pipeline = data["pipeline"]
-            self._classes = data["classes"]
-            logger.info(
-                "Pretrained EEG classifier loaded from %s (classes: %s)",
-                self._MODEL_PATH,
-                self._classes,
-            )
-        except FileNotFoundError:
-            logger.info(
-                "No pretrained classifier found at %s — using heuristics",
-                self._MODEL_PATH,
-            )
-        except Exception as exc:
-            logger.warning(
-                "Failed to load pretrained classifier: %s — using heuristics", exc
-            )
+        """
+        Try to load the trained SVM model. Checks:
+          1. config/backend/classifier.joblib  (primary)
+          2. config/backend/backups/*.joblib   (newest first, auto-fallback)
+        Silently falls back to heuristics if nothing found.
+        """
+        import joblib
+
+        candidates: list[Path] = [self._MODEL_PATH]
+        if self._BACKUP_DIR.exists():
+            candidates.extend(sorted(self._BACKUP_DIR.glob("*.joblib"), reverse=True))
+
+        for path in candidates:
+            try:
+                data = joblib.load(path)
+                self._pipeline = data["pipeline"]
+                self._classes = data["classes"]
+                logger.info(
+                    "Pretrained EEG classifier loaded from %s (classes: %s)",
+                    path,
+                    self._classes,
+                )
+                return
+            except FileNotFoundError:
+                continue
+            except Exception as exc:
+                logger.warning("Failed to load %s: %s — trying next", path, exc)
+
+        logger.info("No pretrained classifier found — using heuristics")
 
     @property
     def using_pretrained(self) -> bool:
@@ -168,12 +188,45 @@ class CognitiveStateClassifier:
         return self._classify_heuristic(powers)
 
     def _classify_pretrained(self, powers: BandPowers) -> ClassificationResult:
-        """Use the loaded SVM model."""
+        """
+        Use SVM for FOCUSED/DISENGAGED classification.
+        OVERLOADED is not in the SVM's training classes, so a heuristic gate
+        runs first: if the alpha-normalized overload score exceeds the threshold,
+        return OVERLOADED immediately without invoking the SVM.
+        """
         import numpy as np
         EPS_LOCAL = 1e-10
         d, t, a, b, g = (
             powers.delta, powers.theta, powers.alpha, powers.beta, powers.gamma
         )
+
+        focus_score = b / max(t, EPS_LOCAL)
+        cognitive_load = b + g
+
+        # ── OVERLOADED gate ──────────────────────────────────────────────────
+        # Compute alpha-normalized overload score from relative (baseline-aware)
+        # band powers. More conservative threshold when baseline is not yet
+        # established to reduce false positives from individual alpha variation.
+        normalized = self.calibrator.normalize(powers)
+        overload_score = (
+            (normalized["beta"] + normalized["gamma"]) / max(normalized["alpha"], EPS_LOCAL)
+        )
+        has_baseline = self.calibrator.is_ready
+        overload_threshold = OVERLOAD_RATIO_THRESHOLD if has_baseline else OVERLOAD_RATIO_THRESHOLD * 1.5
+
+        if overload_score > overload_threshold:
+            confidence = min(1.0, 0.65 + (overload_score - overload_threshold) * 0.05)
+            if not has_baseline:
+                confidence *= 0.7
+            return ClassificationResult(
+                state="OVERLOADED",
+                confidence=round(confidence, 3),
+                focus_score=round(focus_score, 4),
+                cognitive_load=round(cognitive_load, 4),
+                relative_to_baseline=has_baseline,
+            )
+        # ────────────────────────────────────────────────────────────────────
+
         features = np.array([
             d, t, a, b, g,
             b / max(t, EPS_LOCAL),
@@ -187,9 +240,6 @@ class CognitiveStateClassifier:
         state = self._classes[idx]
         confidence = float(proba[idx])
 
-        focus_score = b / max(t, EPS_LOCAL)
-        cognitive_load = b + g
-
         return ClassificationResult(
             state=state,
             confidence=round(confidence, 3),
@@ -199,21 +249,37 @@ class CognitiveStateClassifier:
         )
 
     def _classify_heuristic(self, powers: BandPowers) -> ClassificationResult:
-        """Original heuristic classifier (unchanged)."""
+        """
+        Heuristic classifier with alpha-normalized OVERLOADED detection.
+
+        OVERLOADED detection uses the ratio:
+            overload_score = (rel_beta + rel_gamma) / rel_alpha
+
+        Alpha suppression is the primary EEG marker of cognitive overload —
+        dividing by rel_alpha amplifies the signal when alpha is suppressed
+        while beta+gamma are elevated. At neutral baseline all rel values
+        equal 1.0, giving a score of 2.0 — safely below the 3.5 threshold.
+        Without a personal baseline a 1.5× conservative multiplier is applied.
+        """
         normalized = self.calibrator.normalize(powers)
 
         rel_beta = normalized["beta"]
         rel_theta = normalized["theta"]
         rel_gamma = normalized["gamma"]
+        rel_alpha = normalized["alpha"]
 
         focus_score = rel_beta / max(rel_theta, EPS)
         cognitive_load = rel_beta + rel_gamma
 
-        has_baseline = self.calibrator.is_ready
+        # Alpha-normalized overload score — invariant to absolute power scale
+        overload_score = cognitive_load / max(rel_alpha, EPS)
 
-        if cognitive_load > LOAD_HIGH_THRESHOLD:
+        has_baseline = self.calibrator.is_ready
+        overload_threshold = OVERLOAD_RATIO_THRESHOLD if has_baseline else OVERLOAD_RATIO_THRESHOLD * 1.5
+
+        if overload_score > overload_threshold:
             state = "OVERLOADED"
-            confidence = min(1.0, 0.6 + (cognitive_load - LOAD_HIGH_THRESHOLD) * 0.5)
+            confidence = min(1.0, 0.65 + (overload_score - overload_threshold) * 0.05)
 
         elif focus_score > FOCUS_HIGH_THRESHOLD:
             state = "FOCUSED"

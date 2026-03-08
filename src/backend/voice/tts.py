@@ -61,6 +61,13 @@ async def synthesize_and_stream(
             logger.error("Hume TTS auth failed — check HUME_API_KEY in config/backend/.env")
         else:
             logger.error("Hume TTS failed: %s", exc)
+        from api.models import SessionEventPayload, WebSocketEnvelope
+        await ws_manager.broadcast(
+            session_id,
+            WebSocketEnvelope.session_event(
+                SessionEventPayload(type="error", data={"source": "tts", "message": str(exc)})
+            ),
+        )
         return
 
     # Split into chunks and stream

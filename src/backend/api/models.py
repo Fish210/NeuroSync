@@ -142,6 +142,10 @@ class StartSessionRequest(BaseModel):
     topic: str = Field(min_length=1, max_length=200)
 
 
+class StopSessionRequest(BaseModel):
+    session_id: str = Field(min_length=1)
+
+
 class LessonBlock(BaseModel):
     id: str
     title: str

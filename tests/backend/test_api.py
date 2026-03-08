@@ -127,6 +127,39 @@ class TestStopSession:
 
 
 # ---------------------------------------------------------------------------
+# /override-state endpoint
+# ---------------------------------------------------------------------------
+
+class TestOverrideState:
+    def test_override_valid_state_returns_200(self, client):
+        start = client.post("/start-session", json={"topic": "algebra"})
+        session_id = start.json()["session_id"]
+        response = client.post("/override-state", json={"session_id": session_id, "state": "FOCUSED"})
+        assert response.status_code == 200
+        data = response.json()
+        assert data["state"] == "FOCUSED"
+        assert data["overridden"] is True
+        assert data["session_id"] == session_id
+
+    def test_override_invalid_state_returns_422(self, client):
+        start = client.post("/start-session", json={"topic": "algebra"})
+        session_id = start.json()["session_id"]
+        response = client.post("/override-state", json={"session_id": session_id, "state": "CAFFEINATED"})
+        assert response.status_code == 422
+
+    def test_override_missing_session_returns_404(self, client):
+        response = client.post("/override-state", json={"session_id": "nonexistent", "state": "FOCUSED"})
+        assert response.status_code == 404
+
+    def test_override_all_valid_states_accepted(self, client):
+        start = client.post("/start-session", json={"topic": "algebra"})
+        session_id = start.json()["session_id"]
+        for state in ("FOCUSED", "OVERLOADED", "DISENGAGED"):
+            response = client.post("/override-state", json={"session_id": session_id, "state": state})
+            assert response.status_code == 200
+
+
+# ---------------------------------------------------------------------------
 # CORS headers
 # ---------------------------------------------------------------------------
 

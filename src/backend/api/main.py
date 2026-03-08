@@ -45,6 +45,11 @@ _active_session_id: str | None = None  # Phase 1: single-session model
 _last_planner_trigger: float = 0.0        # timestamp of last planner strategy update
 PLANNER_COOLDOWN_SECONDS: float = 10.0    # minimum seconds between planner updates
 
+# Minimum SVM confidence to count a window toward the dwell-time filter.
+# Low-confidence windows are broadcast to the frontend (band powers still visible)
+# but do NOT advance the state-transition counter — prevents noisy flips.
+EEG_CONFIDENCE_MIN: float = float(os.getenv("EEG_CONFIDENCE_MIN", "0.55"))
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -57,7 +62,7 @@ async def lifespan(app: FastAPI):
     _eeg_queue = asyncio.Queue(maxsize=256)
 
     # Start EEG ingestion in background (non-blocking — connects to LSL lazily)
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
 
     from eeg.ingestion import EEGIngestion
     _eeg_ingestion = EEGIngestion(loop=loop, queue=_eeg_queue)
@@ -135,6 +140,7 @@ async def _process_eeg_queue() -> None:
     from eeg.classifier import CognitiveStateClassifier
     from eeg.filter import BandPowerSmoother, DwellTimeFilter
     from eeg.processor import EEGProcessor
+    from session.events import event_log
     from session.store import session_store
 
     processor = EEGProcessor()
@@ -152,92 +158,113 @@ async def _process_eeg_queue() -> None:
         except asyncio.CancelledError:
             return
 
-        event_type = event.get("type", "")
+        try:
+            event_type = event.get("type", "")
 
-        # Guard: if the active session was stopped, clear the stale reference
-        if _active_session_id and not session_store.get(_active_session_id):
-            _active_session_id = None
+            # Guard: if the active session was stopped, clear the stale reference
+            if _active_session_id and not session_store.get(_active_session_id):
+                _active_session_id = None
 
-        if event_type == "eeg_connected":
-            logger.info("EEG stream connected")
-            if _active_session_id:
-                await manager.broadcast(
-                    _active_session_id,
-                    WebSocketEnvelope.session_event(
-                        SessionEventPayload(type="eeg_connected")
-                    ),
-                )
+            if event_type == "eeg_connected":
+                logger.info("EEG stream connected")
+                if _active_session_id:
+                    await manager.broadcast(
+                        _active_session_id,
+                        WebSocketEnvelope.session_event(
+                            SessionEventPayload(type="eeg_connected")
+                        ),
+                    )
 
-        elif event_type == "eeg_data":
-            # Process latest samples from ring buffer
-            if not _eeg_ingestion:
-                continue
+            elif event_type == "eeg_data":
+                # Process latest samples from ring buffer
+                if not _eeg_ingestion:
+                    continue
 
-            samples = _eeg_ingestion.get_recent_samples(512)
-            raw_powers = processor.compute(samples)
-            if raw_powers is None:
-                continue
+                samples = _eeg_ingestion.get_recent_samples(512)
+                raw_powers = processor.compute(samples)
+                if raw_powers is None:
+                    continue
 
-            smoothed = smoother.update(raw_powers)
+                smoothed = smoother.update(raw_powers)
 
-            # Feed to classifier (also adds to calibrator if warming up)
-            result = classifier.classify(smoothed)
+                # Feed to classifier (also adds to calibrator if warming up)
+                result = classifier.classify(smoothed)
 
-            # Dwell-time filter — only act on confirmed state transitions
-            published_state = dwell_filter.update(result.state)
+                # Dwell-time filter — only advance the counter for high-confidence windows.
+                # Low-confidence predictions are shown on the frontend (band powers + state
+                # indicator still update) but do not count toward state transitions.
+                if result.confidence >= EEG_CONFIDENCE_MIN:
+                    published_state = dwell_filter.update(result.state)
+                else:
+                    published_state = None
 
-            # Always broadcast band power update (even without state transition)
-            if _active_session_id:
-                bands = EEGBandPowers(
-                    alpha=smoothed.alpha,
-                    beta=smoothed.beta,
-                    theta=smoothed.theta,
-                    gamma=smoothed.gamma,
-                    delta=smoothed.delta,
-                )
-                payload = StateUpdatePayload(
-                    state=result.state,
-                    confidence=result.confidence,
-                    bands=bands,
-                )
-                await manager.broadcast(
-                    _active_session_id,
-                    WebSocketEnvelope.state_update(payload),
-                )
+                # Always broadcast band power update (even without state transition)
+                if _active_session_id:
+                    bands = EEGBandPowers(
+                        alpha=smoothed.alpha,
+                        beta=smoothed.beta,
+                        theta=smoothed.theta,
+                        gamma=smoothed.gamma,
+                        delta=smoothed.delta,
+                    )
+                    payload = StateUpdatePayload(
+                        state=result.state,
+                        confidence=result.confidence,
+                        bands=bands,
+                    )
+                    await manager.broadcast(
+                        _active_session_id,
+                        WebSocketEnvelope.state_update(payload),
+                    )
 
-                if published_state:
-                    record_state_for_session(_active_session_id, published_state)
-                    # Fix: keep session.current_state in sync for speaker agent
-                    await session_store.update_state(_active_session_id, published_state)
-                    # Trigger planner strategy update with cooldown
-                    _now = time.time()
-                    if _now - _last_planner_trigger >= PLANNER_COOLDOWN_SECONDS:
-                        _last_planner_trigger = _now
-                        from agents.planner import update_strategy_for_state
-                        asyncio.create_task(
-                            update_strategy_for_state(_active_session_id, published_state)
+                    if published_state:
+                        record_state_for_session(_active_session_id, published_state)
+                        # Keep session.current_state in sync for speaker agent
+                        await session_store.update_state(_active_session_id, published_state)
+                        # Record state_published event so adaptation_events are populated
+                        session = session_store.get(_active_session_id)
+                        event_log.record(
+                            "state_published",
+                            _active_session_id,
+                            {
+                                "state": published_state,
+                                "strategy": session.current_strategy.strategy if session else "continue",
+                            },
                         )
+                        # Trigger planner strategy update with cooldown
+                        _now = time.time()
+                        if _now - _last_planner_trigger >= PLANNER_COOLDOWN_SECONDS:
+                            _last_planner_trigger = _now
+                            from agents.planner import update_strategy_for_state
+                            asyncio.create_task(
+                                update_strategy_for_state(_active_session_id, published_state)
+                            )
 
-        elif event_type == "contact_quality":
-            if _active_session_id:
-                await manager.broadcast(
-                    _active_session_id,
-                    WebSocketEnvelope.session_event(
-                        SessionEventPayload(
-                            type="contact_quality",
-                            data=event.get("data", {}),
-                        )
-                    ),
-                )
+            elif event_type == "contact_quality":
+                if _active_session_id:
+                    await manager.broadcast(
+                        _active_session_id,
+                        WebSocketEnvelope.session_event(
+                            SessionEventPayload(
+                                type="contact_quality",
+                                data=event.get("data", {}),
+                            )
+                        ),
+                    )
 
-        elif event_type == "eeg_disconnected":
-            if _active_session_id:
-                await manager.broadcast(
-                    _active_session_id,
-                    WebSocketEnvelope.session_event(
-                        SessionEventPayload(type="eeg_disconnected")
-                    ),
-                )
+            elif event_type == "eeg_disconnected":
+                if _active_session_id:
+                    await manager.broadcast(
+                        _active_session_id,
+                        WebSocketEnvelope.session_event(
+                            SessionEventPayload(type="eeg_disconnected")
+                        ),
+                    )
+
+        except asyncio.CancelledError:
+            return
+        except Exception as exc:
+            logger.error("EEG queue processing error: %s", exc, exc_info=True)
 
 
 # Create FastAPI app

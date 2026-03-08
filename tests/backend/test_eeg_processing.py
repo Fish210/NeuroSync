@@ -167,25 +167,32 @@ class TestCognitiveStateClassifier:
 
     def test_high_cognitive_load_classified_as_overloaded(self):
         clf = CognitiveStateClassifier()
-        # After baseline warm-up with low load, high beta+gamma = OVERLOADED
+        clf._pipeline = None  # test heuristic rules, not SVM
+        # Baseline with low beta+gamma and moderate alpha
         low_load = self._make_powers(beta=0.2, gamma=0.1)
         for _ in range(5):
             clf.calibrator.add_window(low_load)
 
-        # Very high beta+gamma relative to baseline
+        # Very high beta+gamma relative to baseline, alpha unchanged
+        # overload_score = (rel_beta + rel_gamma) / rel_alpha
+        #   = (0.9/0.2 + 0.8/0.1) / (0.3/0.3) = (4.5 + 8.0) / 1.0 = 12.5 > 3.5
         high_load = self._make_powers(beta=0.9, gamma=0.8, theta=0.1)
         result = clf.classify(high_load)
         assert result.state == "OVERLOADED"
 
     def test_high_focus_score_classified_as_focused(self):
         clf = CognitiveStateClassifier()
-        # Baseline with moderate focus
-        baseline = self._make_powers(beta=0.3, theta=0.3)
+        clf._pipeline = None  # test heuristic rules, not SVM
+        # Baseline: moderate beta, moderate theta, high gamma (person has elevated gamma at rest)
+        baseline = self._make_powers(beta=0.3, theta=0.3, gamma=0.5)
         for _ in range(5):
             clf.calibrator.add_window(baseline)
 
-        # High beta / low theta = high focus score
-        focused = self._make_powers(beta=0.7, theta=0.1, gamma=0.1)
+        # FOCUSED state: high beta/theta, gamma well below baseline, alpha unchanged
+        # overload_score = (rel_beta + rel_gamma) / rel_alpha
+        #   = (0.43/0.3 + 0.05/0.5) / (0.3/0.3) = (1.43 + 0.10) / 1.0 = 1.53 < 3.5 → not OVERLOADED
+        # focus_score = rel_beta / rel_theta = 1.43 / (0.08/0.3) = 1.43/0.267 ≈ 5.4 > 1.4 → FOCUSED
+        focused = self._make_powers(beta=0.43, theta=0.08, gamma=0.05)
         result = clf.classify(focused)
         assert result.state == "FOCUSED"
 

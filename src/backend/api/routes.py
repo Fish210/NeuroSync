@@ -19,10 +19,13 @@ from fastapi import APIRouter, HTTPException
 from api.models import (
     LessonBlock,
     LessonPlan,
+    SessionEventPayload,
     SessionSummary,
     StartSessionRequest,
     StartSessionResponse,
+    StopSessionRequest,
     StopSessionResponse,
+    WebSocketEnvelope,
 )
 from session.events import event_log
 from session.store import session_store
@@ -115,11 +118,11 @@ async def start_session(request: StartSessionRequest) -> StartSessionResponse:
 
 
 @router.post("/stop-session", response_model=StopSessionResponse)
-async def stop_session(body: dict) -> StopSessionResponse:
+async def stop_session(body: StopSessionRequest) -> StopSessionResponse:
     """
     End a tutoring session and return the post-session summary.
     """
-    session_id = body.get("session_id", "")
+    session_id = body.session_id
     session = session_store.get(session_id)
     if not session:
         raise HTTPException(status_code=404, detail=f"Session not found: {session_id}")
@@ -147,6 +150,16 @@ async def stop_session(body: dict) -> StopSessionResponse:
     summary = SessionSummary(**summary_data)
 
     event_log.record("session_stopped", session_id)
+
+    # Notify any still-connected frontend clients before deleting the session
+    from api.websocket import manager
+    await manager.broadcast(
+        session_id,
+        WebSocketEnvelope.session_event(
+            SessionEventPayload(type="session_ended", data={"session_id": session_id})
+        ),
+    )
+
     session_store.delete(session_id)
     _session_trackers.pop(session_id, None)
     _session_state_logs.pop(session_id, None)
