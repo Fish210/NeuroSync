@@ -1,0 +1,32 @@
+{
+  "derivatives": {
+    "topic": "derivatives",
+    "blocks": [
+      {"id": "block-1", "title": "What is a derivative?", "difficulty": 1},
+      {"id": "block-2", "title": "The limit definition", "difficulty": 2},
+      {"id": "block-3", "title": "Power rule basics", "difficulty": 2},
+      {"id": "block-4", "title": "Chain rule introduction", "difficulty": 3},
+      {"id": "block-5", "title": "Practice problem", "difficulty": 3}
+    ],
+    "current_block": "block-1"
+  },
+  "newtons_laws": {
+    "topic": "newtons_laws",
+    "blocks": [
+      {"id": "block-1", "title": "Newton's First Law — inertia", "difficulty": 1},
+      {"id": "block-2", "title": "Newton's Second Law — F = ma", "difficulty": 2},
+      {"id": "block-3", "title": "Newton's Third Law — action-reaction", "difficulty": 2},
+      {"id": "block-4", "title": "Applying the laws — worked example", "difficulty": 3}
+    ],
+    "current_block": "block-1"
+  },
+  "algebra": {
+    "topic": "algebra",
+    "blocks": [
+      {"id": "block-1", "title": "Variables and expressions", "difficulty": 1},
+      {"id": "block-2", "title": "Solving linear equations", "difficulty": 2},
+      {"id": "block-3", "title": "Quadratic equations", "difficulty": 3}
+    ],
+    "current_block": "block-1"
+  }
+}

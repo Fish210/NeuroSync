@@ -1,3 +1,24 @@
 .agent
 .claude
 .claude-flow
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.pytest_cache/
+.venv/
+*.egg-info/
+
+# Environment
+/config/backend/.env
+
+# macOS
+.DS_Store
+
+# Node
+node_modules/
+
+# IDE
+.vscode/
+.idea/
