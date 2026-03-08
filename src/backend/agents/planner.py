@@ -112,3 +112,42 @@ async def generate_lesson_plan(topic: str) -> dict:
     except Exception as exc:
         logger.warning("Planner failed (%s) — using fallback plan for topic: %s", exc, topic)
         return _fallback_plan(topic)
+
+
+# Strategy mapping: cognitive state → (strategy, tone)
+_STATE_STRATEGY_MAP = {
+    "OVERLOADED": ("step_by_step", "slow"),
+    "DISENGAGED": ("re_engage", "encouraging"),
+    "FOCUSED":    ("continue", "neutral"),
+}
+
+
+async def update_strategy_for_state(session_id: str, new_state: str) -> None:
+    """
+    Called when the EEG dwell-time filter confirms a new cognitive state.
+    Updates the session's current_strategy (or pending_strategy if speaker is active).
+
+    Uses a heuristic mapping — fast, no API call needed.
+    """
+    from session.store import session_store, SessionStrategy
+
+    session = session_store.get(session_id)
+    if not session:
+        return
+
+    strategy_name, tone = _STATE_STRATEGY_MAP.get(new_state, ("continue", "neutral"))
+    new_strategy = SessionStrategy(strategy=strategy_name, tone=tone)
+
+    if session.speaker_lock.locked():
+        # Speaker is mid-generation — queue the strategy update
+        session.pending_strategy = new_strategy
+        logger.info(
+            "State change %s → strategy '%s' queued (speaker active)",
+            new_state, strategy_name,
+        )
+    else:
+        session.current_strategy = new_strategy
+        logger.info(
+            "State change %s → strategy updated to '%s'",
+            new_state, strategy_name,
+        )

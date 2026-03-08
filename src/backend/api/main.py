@@ -17,6 +17,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import time
 from contextlib import asynccontextmanager
 
 from dotenv import load_dotenv
@@ -41,6 +42,8 @@ _eeg_ingestion = None
 _eeg_watchdog_task: asyncio.Task | None = None
 _eeg_queue: asyncio.Queue | None = None
 _active_session_id: str | None = None  # Phase 1: single-session model
+_last_planner_trigger: float = 0.0        # timestamp of last planner strategy update
+PLANNER_COOLDOWN_SECONDS: float = 10.0    # minimum seconds between planner updates
 
 
 @asynccontextmanager
@@ -122,7 +125,7 @@ async def _process_eeg_queue() -> None:
         eeg_data         → trigger processing window if enough samples
         contact_quality  → SESSION_EVENT to frontend
     """
-    global _active_session_id
+    global _active_session_id, _last_planner_trigger
 
     from api.models import (
         EEGBandPowers, SessionEventPayload, StateUpdatePayload, WebSocketEnvelope
@@ -132,6 +135,7 @@ async def _process_eeg_queue() -> None:
     from eeg.classifier import CognitiveStateClassifier
     from eeg.filter import BandPowerSmoother, DwellTimeFilter
     from eeg.processor import EEGProcessor
+    from session.store import session_store
 
     processor = EEGProcessor()
     smoother = BandPowerSmoother()
@@ -199,6 +203,16 @@ async def _process_eeg_queue() -> None:
 
                 if published_state:
                     record_state_for_session(_active_session_id, published_state)
+                    # Fix: keep session.current_state in sync for speaker agent
+                    await session_store.update_state(_active_session_id, published_state)
+                    # Trigger planner strategy update with cooldown
+                    _now = time.time()
+                    if _now - _last_planner_trigger >= PLANNER_COOLDOWN_SECONDS:
+                        _last_planner_trigger = _now
+                        from agents.planner import update_strategy_for_state
+                        asyncio.create_task(
+                            update_strategy_for_state(_active_session_id, published_state)
+                        )
 
         elif event_type == "contact_quality":
             if _active_session_id:
