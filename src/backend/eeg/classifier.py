@@ -20,6 +20,7 @@ import os
 import time
 from collections import deque
 from dataclasses import dataclass, field
+from pathlib import Path
 
 from eeg.processor import BandPowers
 
@@ -120,39 +121,98 @@ class BaselineCalibrator:
 
 class CognitiveStateClassifier:
     """
-    Classifies cognitive state from normalized band powers.
+    Classifies cognitive state from band powers.
 
-    Heuristics:
-        focus_score   = relative_beta / max(relative_theta, eps)
-        cognitive_load = relative_beta + relative_gamma
-
-        OVERLOADED  → cognitive_load > LOAD_HIGH_THRESHOLD
-        FOCUSED     → focus_score > FOCUS_HIGH_THRESHOLD (and not overloaded)
-        DISENGAGED  → focus_score < FOCUS_LOW_THRESHOLD (and not overloaded)
-        FOCUSED     → otherwise (moderate engagement)
+    If config/backend/classifier.joblib exists (trained via scripts/training/train_gui.py),
+    uses the pretrained SVM. Otherwise falls back to heuristic band power ratios.
     """
+
+    _MODEL_PATH = Path(__file__).parent.parent.parent.parent / "config" / "backend" / "classifier.joblib"
 
     def __init__(self) -> None:
         self.calibrator = BaselineCalibrator()
+        self._pipeline = None
+        self._classes: list[str] = []
+        self._load_pretrained()
+
+    def _load_pretrained(self) -> None:
+        """Try to load the trained SVM model. Silently falls back to heuristics."""
+        try:
+            import joblib
+            data = joblib.load(self._MODEL_PATH)
+            self._pipeline = data["pipeline"]
+            self._classes = data["classes"]
+            logger.info(
+                "Pretrained EEG classifier loaded from %s (classes: %s)",
+                self._MODEL_PATH,
+                self._classes,
+            )
+        except FileNotFoundError:
+            logger.info(
+                "No pretrained classifier found at %s — using heuristics",
+                self._MODEL_PATH,
+            )
+        except Exception as exc:
+            logger.warning(
+                "Failed to load pretrained classifier: %s — using heuristics", exc
+            )
+
+    @property
+    def using_pretrained(self) -> bool:
+        return self._pipeline is not None
 
     def classify(self, powers: BandPowers) -> ClassificationResult:
         """Classify band powers into a cognitive state."""
+        if self._pipeline is not None:
+            return self._classify_pretrained(powers)
+        return self._classify_heuristic(powers)
+
+    def _classify_pretrained(self, powers: BandPowers) -> ClassificationResult:
+        """Use the loaded SVM model."""
+        import numpy as np
+        EPS_LOCAL = 1e-10
+        d, t, a, b, g = (
+            powers.delta, powers.theta, powers.alpha, powers.beta, powers.gamma
+        )
+        features = np.array([
+            d, t, a, b, g,
+            b / max(t, EPS_LOCAL),
+            b / max(a, EPS_LOCAL),
+            (b + g) / max(a + t, EPS_LOCAL),
+            t / max(a, EPS_LOCAL),
+        ], dtype=np.float32)
+
+        proba = self._pipeline.predict_proba(features.reshape(1, -1))[0]
+        idx = int(np.argmax(proba))
+        state = self._classes[idx]
+        confidence = float(proba[idx])
+
+        focus_score = b / max(t, EPS_LOCAL)
+        cognitive_load = b + g
+
+        return ClassificationResult(
+            state=state,
+            confidence=round(confidence, 3),
+            focus_score=round(focus_score, 4),
+            cognitive_load=round(cognitive_load, 4),
+            relative_to_baseline=False,
+        )
+
+    def _classify_heuristic(self, powers: BandPowers) -> ClassificationResult:
+        """Original heuristic classifier (unchanged)."""
         normalized = self.calibrator.normalize(powers)
 
         rel_beta = normalized["beta"]
         rel_theta = normalized["theta"]
         rel_gamma = normalized["gamma"]
-        rel_alpha = normalized["alpha"]
 
         focus_score = rel_beta / max(rel_theta, EPS)
         cognitive_load = rel_beta + rel_gamma
 
         has_baseline = self.calibrator.is_ready
 
-        # Classification rules
         if cognitive_load > LOAD_HIGH_THRESHOLD:
             state = "OVERLOADED"
-            # Confidence increases with how far above threshold
             confidence = min(1.0, 0.6 + (cognitive_load - LOAD_HIGH_THRESHOLD) * 0.5)
 
         elif focus_score > FOCUS_HIGH_THRESHOLD:
@@ -164,11 +224,9 @@ class CognitiveStateClassifier:
             confidence = min(1.0, 0.6 + (FOCUS_LOW_THRESHOLD - focus_score) * 0.5)
 
         else:
-            # Moderate engagement — treat as focused with lower confidence
             state = "FOCUSED"
             confidence = 0.55
 
-        # Lower confidence if no baseline yet
         if not has_baseline:
             confidence *= 0.7
 
