@@ -1,22 +1,7 @@
 declare global {
-  interface SpeechRecognitionEvent extends Event {
-    readonly resultIndex: number;
-    readonly results: SpeechRecognitionResultList;
-  }
-  interface SpeechRecognitionErrorEvent extends Event {
-    readonly error: string;
-    readonly message: string;
-  }
-  interface SpeechRecognition extends EventTarget {
-    lang: string;
-    continuous: boolean;
-    interimResults: boolean;
-    onresult: ((event: SpeechRecognitionEvent) => void) | null;
-    onerror: ((event: SpeechRecognitionErrorEvent) => void) | null;
-    onend: (() => void) | null;
-    start(): void;
-    stop(): void;
-    abort(): void;
+  interface Window {
+    SpeechRecognition: new () => SpeechRecognition;
+    webkitSpeechRecognition: new () => SpeechRecognition;
   }
 }
 
@@ -29,11 +14,14 @@ export class Microphone {
   private audioCtx: AudioContext | null = null;
   private analyser: AnalyserNode | null = null;
   private vadInterval: ReturnType<typeof setInterval> | null = null;
+  private _stopped = false;
 
   async start(
     onTranscript: TranscriptCallback,
     onVadLevel: VadCallback,
   ): Promise<void> {
+    this._stopped = false;
+
     // Microphone stream for VAD
     this.stream = await navigator.mediaDevices.getUserMedia({ audio: true });
     this.audioCtx = new AudioContext();
@@ -44,7 +32,8 @@ export class Microphone {
 
     const dataArray = new Uint8Array(this.analyser.frequencyBinCount);
     this.vadInterval = setInterval(() => {
-      this.analyser!.getByteFrequencyData(dataArray);
+      if (this._stopped || !this.analyser) return;
+      this.analyser.getByteFrequencyData(dataArray);
       const avg = dataArray.reduce((a, b) => a + b, 0) / dataArray.length;
       onVadLevel(avg / 255);
     }, 100);
@@ -64,6 +53,7 @@ export class Microphone {
     this.recognition.interimResults = false;
 
     this.recognition.onresult = (event: SpeechRecognitionEvent) => {
+      if (this._stopped) return;
       for (let i = event.resultIndex; i < event.results.length; i++) {
         if (event.results[i].isFinal) {
           const text = event.results[i][0].transcript.trim();
@@ -73,27 +63,36 @@ export class Microphone {
     };
 
     this.recognition.onerror = (e: SpeechRecognitionErrorEvent) => {
+      if (this._stopped) return;
       if (e.error !== "aborted") {
-        setTimeout(() => this.recognition?.start(), 500);
+        setTimeout(() => {
+          if (!this._stopped) this.recognition?.start();
+        }, 500);
       }
     };
 
     this.recognition.onend = () => {
-      if (this.stream) {
-        setTimeout(() => this.recognition?.start(), 200);
-      }
+      if (this._stopped) return;
+      setTimeout(() => {
+        if (!this._stopped) this.recognition?.start();
+      }, 200);
     };
 
     this.recognition.start();
   }
 
   stop(): void {
+    this._stopped = true;
+
     if (this.vadInterval) clearInterval(this.vadInterval);
     this.vadInterval = null;
-    this.recognition?.stop();
+
+    try { this.recognition?.stop(); } catch (_) {}
     this.recognition = null;
+
     this.stream?.getTracks().forEach((t) => t.stop());
     this.stream = null;
+
     this.audioCtx?.close();
     this.audioCtx = null;
     this.analyser = null;

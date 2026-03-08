@@ -111,7 +111,10 @@ export default function HomePage() {
 
               <SessionControls
                 status={status}
-                onStart={start}
+                onStart={(topic) => {
+                  setShowSummary(false);
+                  start(topic);
+                }}
                 onStop={stop}
               />
             </div>

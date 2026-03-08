@@ -107,7 +107,12 @@ export function useNeuroSyncSocket() {
           if (message.payload.type === "session_started") setSpeakingState("idle");
         }
       },
-      (s) => setStatus(s as any),
+      (s) => {
+        const valid = ["connecting", "open", "closed", "error"] as const;
+        if (valid.includes(s as any)) {
+          setStatus(s as "connecting" | "open" | "closed" | "error");
+        }
+      },
     );
     clientRef.current = client;
     client.connect();
@@ -171,6 +176,14 @@ export function useNeuroSyncSocket() {
       return () => clearTimeout(t);
     }
   }, [speakingState]);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      stop();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const currentState: CognitiveState = useMemo(
     () => stateUpdate?.state || "DISENGAGED",
