@@ -14,7 +14,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 
 - [ ] **Phase 1: EEG Pipeline** - Muse headband → band power extraction → cognitive state classification → WebSocket state events verified in browser
 - [ ] **Phase 2: Backend Infrastructure and AI Agents** - FastAPI session lifecycle, WebSocket hub, two-agent state machine, Planner + Speaker wired to Featherless API
-- [ ] **Phase 3: Voice I/O** - Browser microphone transcription, ElevenLabs TTS streaming, VAD barge-in interruption, seamless conversation resumption
+- [ ] **Phase 3: Voice I/O** - Browser microphone transcription, Hume TTS streaming, VAD barge-in interruption, seamless conversation resumption
 - [ ] **Phase 4: Whiteboard and Full Frontend UI** - LiveKit whiteboard sync, KaTeX equation rendering, all UI panels connected to live WebSocket data
 - [ ] **Phase 5: Post-Session Summary and Demo Hardening** - Planner-generated summary, state timeline, PDF export, end-to-end latency validation, canned fallback
 
@@ -59,14 +59,14 @@ Plans:
 **Requirements**: VOICE-01, VOICE-02, VOICE-03, VOICE-04, VOICE-05, VOICE-06
 **Success Criteria** (what must be TRUE):
   1. Clicking "Start Session" initializes the AudioContext and the tutor's first spoken response auto-plays in the browser without any additional user action — no autoplay policy errors occur
-  2. The student speaks a question into the browser microphone; Web Speech API transcribes it and the speaker agent responds via ElevenLabs voice within 2 seconds of the student finishing speech
-  3. While the tutor is speaking, the student begins talking — VAD detects the interruption, ElevenLabs audio stops immediately, and the speaker agent processes the new student input and responds without manual intervention
+  2. The student speaks a question into the browser microphone; Web Speech API transcribes it and the speaker agent responds via Hume TTS voice within 2 seconds of the student finishing speech
+  3. While the tutor is speaking, the student begins talking — VAD detects the interruption, Hume TTS audio stops immediately, and the speaker agent processes the new student input and responds without manual intervention
   4. The browser microphone functions correctly when the app is served from localhost:3000 (microphone permission pre-granted in demo browser profile)
 **Plans**: TBD
 
 Plans:
-- [ ] 03-01: ElevenLabs TTS integration — eleven_turbo_v2_5 streaming endpoint, WebSocket binary audio chunk delivery, AudioContext pre-initialization on Start Session click
-- [ ] 03-02: Web Speech API transcription — browser microphone capture, STT to backend, VAD barge-in detection and ElevenLabs audio stop, conversation resumption after interruption
+- [ ] 03-01: Hume TTS integration — Hume REST TTS API streaming endpoint, WebSocket binary audio chunk delivery, AudioContext pre-initialization on Start Session click
+- [ ] 03-02: Web Speech API transcription — browser microphone capture, STT to backend, VAD barge-in detection and Hume TTS audio stop, conversation resumption after interruption
 
 ### Phase 4: Whiteboard and Full Frontend UI
 **Goal**: The full demo UI is visible — the causal chain EEG band bars → state badge → strategy label → tutor transcript is readable in under 5 seconds, the whiteboard supports tutor text/equations and student input, and all panels update in real time from the WebSocket
@@ -98,7 +98,7 @@ Plans:
 Plans:
 - [ ] 05-01: Post-session summary — planner-generated summary (time per state, topics covered, per-topic comprehension inference), summary screen with state timeline chart
 - [ ] 05-02: PDF export — browser-side PDF generation from summary data
-- [ ] 05-03: End-to-end demo hardening — latency measurement across all five flows, mobile hotspot connectivity test, ElevenLabs quota check, headband calibration procedure
+- [ ] 05-03: End-to-end demo hardening — latency measurement across all five flows, mobile hotspot connectivity test, Hume API quota check, headband calibration procedure
 
 ## Progress
 
@@ -107,8 +107,8 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. EEG Pipeline | 0/3 | Not started | - |
-| 2. Backend Infrastructure and AI Agents | 0/3 | Not started | - |
-| 3. Voice I/O | 0/2 | Not started | - |
-| 4. Whiteboard and Full Frontend UI | 0/3 | Not started | - |
-| 5. Post-Session Summary and Demo Hardening | 0/3 | Not started | - |
+| 1. EEG Pipeline | 3/3 | Complete | ✅ |
+| 2. Backend Infrastructure and AI Agents | 3/3 | Complete | ✅ |
+| 3. Voice I/O (Hume TTS) | 2/2 | Complete | ✅ |
+| 4. Whiteboard and Full Frontend UI | 0/3 | In progress (frontend) | - |
+| 5. Post-Session Summary and Demo Hardening | 1/3 | In progress | - |

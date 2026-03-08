@@ -20,6 +20,7 @@ import asyncio
 import base64
 import logging
 import os
+import time
 
 import httpx
 
@@ -50,12 +51,16 @@ async def synthesize_and_stream(
         logger.warning("HUME_API_KEY not set — skipping TTS for session %s", session_id)
         return
 
+    _tts_start = time.monotonic()
     try:
         audio_bytes = await _call_hume(text)
     except asyncio.CancelledError:
         raise
     except Exception as exc:
-        logger.error("Hume TTS failed: %s", exc)
+        if "401" in str(exc) or "403" in str(exc) or "unauthorized" in str(exc).lower():
+            logger.error("Hume TTS auth failed — check HUME_API_KEY in config/backend/.env")
+        else:
+            logger.error("Hume TTS failed: %s", exc)
         return
 
     # Split into chunks and stream
@@ -77,9 +82,10 @@ async def synthesize_and_stream(
         )
         await ws_manager.broadcast(session_id, envelope)
 
+    _tts_elapsed = time.monotonic() - _tts_start
     logger.info(
-        "TTS: streamed %d chunks (%d bytes) for session %s",
-        total, len(audio_bytes), session_id,
+        "TTS: streamed %d chunks (%d bytes) in %.2fs for session %s",
+        total, len(audio_bytes), _tts_elapsed, session_id,
     )
 
 
