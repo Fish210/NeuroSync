@@ -1,1 +1,1 @@
-# NeuroSync
+# Project Name: NeuroSync
