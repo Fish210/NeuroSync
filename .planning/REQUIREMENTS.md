@@ -7,29 +7,29 @@
 
 ### EEG Pipeline
 
-- [ ] **EEG-01**: Muse headband streams EEG data via muselsl + LSL to Python FastAPI backend
-- [ ] **EEG-02**: Backend extracts alpha, beta, theta, gamma band powers from a rolling time window
-- [ ] **EEG-03**: Heuristic classifier maps band power ratios (focus_score = beta/theta, cognitive_load = beta+gamma) to one of three states: FOCUSED, OVERLOADED, DISENGAGED
-- [ ] **EEG-04**: Dwell-time filter requires 3+ consecutive windows in the same state before triggering a strategy change (prevents signal flicker from flooding the AI layer)
-- [ ] **EEG-05**: BLE watchdog detects silent Bluetooth dropout and sets system to a known safe state
+- [x] **EEG-01**: Muse headband streams EEG data via muselsl + LSL to Python FastAPI backend
+- [x] **EEG-02**: Backend extracts alpha, beta, theta, gamma band powers from a rolling time window
+- [x] **EEG-03**: Pretrained SVM classifier maps 9 band-power features (beta/theta, beta/alpha, etc.) to one of three states: FOCUSED, OVERLOADED, DISENGAGED; heuristic fallback if model not found
+- [x] **EEG-04**: Dwell-time filter requires 3+ consecutive windows in the same state before triggering a strategy change (prevents signal flicker from flooding the AI layer)
+- [x] **EEG-05**: BLE watchdog detects silent Bluetooth dropout and sets system to a known safe state
 
 ### AI Tutor Agents
 
-- [ ] **AGENT-01**: Planner agent generates a detailed initial lesson plan at session start (topic blocks, progression order, example questions, difficulty levels)
-- [ ] **AGENT-02**: Speaker agent handles real-time voice conversation, responding to student input aligned to current planner strategy
-- [ ] **AGENT-03**: When EEG cognitive state changes, backend prompts planner agent to update the lesson plan and current strategy (async background update)
-- [ ] **AGENT-04**: Speaker agent returns structured output: { strategy, tone, response } for predictable downstream handling
-- [ ] **AGENT-05**: SPEAKER_RUNNING lock prevents planner from mutating strategy while speaker is actively generating a response
-- [ ] **AGENT-06**: Both agents use Featherless API; speaker uses a fast small model (7–8B), planner uses a larger model (70B)
+- [x] **AGENT-01**: Planner agent generates a detailed initial lesson plan at session start (topic blocks, progression order, example questions, difficulty levels)
+- [x] **AGENT-02**: Speaker agent handles real-time voice conversation, responding to student input aligned to current planner strategy
+- [x] **AGENT-03**: When EEG cognitive state changes, backend prompts planner agent to update the lesson plan and current strategy (async background update, 10s cooldown)
+- [x] **AGENT-04**: Speaker agent returns structured output: { strategy, tone, response } for predictable downstream handling
+- [x] **AGENT-05**: SPEAKER_RUNNING lock prevents planner from mutating strategy while speaker is actively generating a response
+- [x] **AGENT-06**: Both agents use Featherless API; speaker uses a fast small model (7–8B), planner uses a larger model (70B)
 
 ### Voice I/O
 
-- [ ] **VOICE-01**: Student speaks into browser microphone; Web Speech API transcribes speech to text and sends to backend
-- [ ] **VOICE-02**: Tutor voice responses are synthesized via ElevenLabs TTS (streaming endpoint) and auto-played in the browser
-- [ ] **VOICE-03**: Audio context is initialized inside a click handler (Start Session button) to comply with browser autoplay policy
-- [ ] **VOICE-04**: Tutor voice response triggers automatically on every AI adaptation event, without student action
-- [ ] **VOICE-05**: Voice Activity Detection (VAD) detects when student begins speaking mid-tutor-playback and immediately stops ElevenLabs audio output (barge-in / interruption)
-- [ ] **VOICE-06**: After interruption, speaker agent receives the student's new input and responds without requiring any manual action — conversation resumes seamlessly
+- [ ] **VOICE-01**: Student speaks into browser microphone; Web Speech API transcribes speech to text and sends to backend (frontend)
+- [x] **VOICE-02**: Tutor voice responses are synthesized via Hume AI TTS REST API, streamed as MP3 chunks, and auto-played in the browser
+- [ ] **VOICE-03**: Audio context is initialized inside a click handler (Start Session button) to comply with browser autoplay policy (frontend)
+- [x] **VOICE-04**: Tutor voice response triggers automatically on every AI adaptation event, without student action
+- [x] **VOICE-05**: Voice Activity Detection (VAD) detects when student begins speaking mid-tutor-playback and immediately stops Hume AI audio (barge-in / interruption)
+- [x] **VOICE-06**: After interruption, speaker agent receives the student's new input and responds without requiring any manual action — conversation resumes seamlessly
 
 ### Whiteboard
 
@@ -51,12 +51,12 @@
 
 ### Session Management
 
-- [ ] **SESS-01**: POST /start-session triggers planner to generate initial lesson plan and returns session ID
-- [ ] **SESS-02**: WebSocket (FastAPI) pushes real-time cognitive state, whiteboard deltas, conversation turns, and audio events to the frontend
-- [ ] **SESS-03**: All session state (lesson plan, cognitive state, conversation history) is held in memory — no database required
-- [ ] **SESS-04**: POST /stop-session cleanly ends EEG ingestion, agent loops, and WebSocket connection
-- [ ] **SESS-05**: Backend tracks cognitive state per active topic throughout the session (timestamps + state at each topic transition)
-- [ ] **SESS-06**: On session end, planner generates a post-session summary: total time per state (FOCUSED/OVERLOADED/DISENGAGED), topics covered, and per-topic comprehension inference (derived from cognitive state during that topic)
+- [x] **SESS-01**: POST /start-session triggers planner to generate initial lesson plan and returns session ID
+- [x] **SESS-02**: WebSocket (FastAPI) pushes real-time cognitive state, whiteboard deltas, conversation turns, and audio events to the frontend
+- [x] **SESS-03**: All session state (lesson plan, cognitive state, conversation history) is held in memory — no database required
+- [x] **SESS-04**: POST /stop-session cleanly ends EEG ingestion, agent loops, and WebSocket connection
+- [x] **SESS-05**: Backend tracks cognitive state per active topic throughout the session (timestamps + state at each topic transition)
+- [x] **SESS-06**: On session end, planner generates a post-session summary: total time per state (FOCUSED/OVERLOADED/DISENGAGED), topics covered, and per-topic comprehension inference (derived from cognitive state during that topic)
 - [ ] **SESS-07**: Post-session summary screen displays: state timeline chart, topics list with comprehension rating, key adaptation events
 - [ ] **SESS-08**: User can export the post-session summary to a PDF from the browser
 
@@ -90,43 +90,43 @@
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| EEG-01 | Phase 1 | Pending |
-| EEG-02 | Phase 1 | Pending |
-| EEG-03 | Phase 1 | Pending |
-| EEG-04 | Phase 1 | Pending |
-| EEG-05 | Phase 1 | Pending |
-| AGENT-01 | Phase 2 | Pending |
-| AGENT-02 | Phase 2 | Pending |
-| AGENT-03 | Phase 2 | Pending |
-| AGENT-04 | Phase 2 | Pending |
-| AGENT-05 | Phase 2 | Pending |
-| AGENT-06 | Phase 2 | Pending |
-| SESS-01 | Phase 2 | Pending |
-| SESS-02 | Phase 2 | Pending |
-| SESS-03 | Phase 2 | Pending |
-| SESS-04 | Phase 2 | Pending |
-| SESS-05 | Phase 2 | Pending |
-| VOICE-01 | Phase 3 | Pending |
-| VOICE-02 | Phase 3 | Pending |
-| VOICE-03 | Phase 3 | Pending |
-| VOICE-04 | Phase 3 | Pending |
-| VOICE-05 | Phase 3 | Pending |
-| VOICE-06 | Phase 3 | Pending |
-| WBRD-01 | Phase 4 | Pending |
-| WBRD-02 | Phase 4 | Pending |
-| WBRD-03 | Phase 4 | Pending |
-| WBRD-04 | Phase 4 | Pending |
-| WBRD-05 | Phase 4 | Pending |
-| WBRD-06 | Phase 4 | Pending |
-| UI-01 | Phase 4 | Pending |
-| UI-02 | Phase 4 | Pending |
-| UI-03 | Phase 4 | Pending |
-| UI-04 | Phase 4 | Pending |
-| UI-05 | Phase 4 | Pending |
-| UI-06 | Phase 4 | Pending |
-| SESS-06 | Phase 5 | Pending |
-| SESS-07 | Phase 5 | Pending |
-| SESS-08 | Phase 5 | Pending |
+| EEG-01 | Phase 1 | Complete |
+| EEG-02 | Phase 1 | Complete |
+| EEG-03 | Phase 1 | Complete |
+| EEG-04 | Phase 1 | Complete |
+| EEG-05 | Phase 1 | Complete |
+| AGENT-01 | Phase 2 | Complete |
+| AGENT-02 | Phase 2 | Complete |
+| AGENT-03 | Phase 2 | Complete |
+| AGENT-04 | Phase 2 | Complete |
+| AGENT-05 | Phase 2 | Complete |
+| AGENT-06 | Phase 2 | Complete |
+| SESS-01 | Phase 2 | Complete |
+| SESS-02 | Phase 2 | Complete |
+| SESS-03 | Phase 2 | Complete |
+| SESS-04 | Phase 2 | Complete |
+| SESS-05 | Phase 2 | Complete |
+| VOICE-01 | Phase 3 | Frontend |
+| VOICE-02 | Phase 3 | Complete |
+| VOICE-03 | Phase 3 | Frontend |
+| VOICE-04 | Phase 3 | Complete |
+| VOICE-05 | Phase 3 | Complete |
+| VOICE-06 | Phase 3 | Complete |
+| WBRD-01 | Phase 4 | Frontend |
+| WBRD-02 | Phase 4 | Frontend |
+| WBRD-03 | Phase 4 | Frontend |
+| WBRD-04 | Phase 4 | Frontend |
+| WBRD-05 | Phase 4 | Frontend |
+| WBRD-06 | Phase 4 | Frontend |
+| UI-01 | Phase 4 | Frontend |
+| UI-02 | Phase 4 | Frontend |
+| UI-03 | Phase 4 | Frontend |
+| UI-04 | Phase 4 | Frontend |
+| UI-05 | Phase 4 | Frontend |
+| UI-06 | Phase 4 | Frontend |
+| SESS-06 | Phase 5 | Complete |
+| SESS-07 | Phase 5 | Frontend |
+| SESS-08 | Phase 5 | Frontend |
 
 **Coverage:**
 - v1 requirements: 37 total (EEG: 5, AGENT: 6, VOICE: 6, WBRD: 6, UI: 6, SESS: 8)
@@ -137,4 +137,4 @@
 
 ---
 *Requirements defined: 2026-03-08*
-*Last updated: 2026-03-08 — traceability finalized with phase assignments, count corrected to 37*
+*Last updated: 2026-03-08 — backend phases 1–3 complete; EEG-03 updated to SVM classifier; VOICE-02/05 updated to Hume AI; traceability statuses updated*

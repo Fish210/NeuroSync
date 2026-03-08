@@ -154,6 +154,10 @@ async def _process_eeg_queue() -> None:
 
         event_type = event.get("type", "")
 
+        # Guard: if the active session was stopped, clear the stale reference
+        if _active_session_id and not session_store.get(_active_session_id):
+            _active_session_id = None
+
         if event_type == "eeg_connected":
             logger.info("EEG stream connected")
             if _active_session_id:

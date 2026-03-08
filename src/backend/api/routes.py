@@ -162,3 +162,50 @@ def record_state_for_session(session_id: str, state: str) -> None:
     tracker = _session_trackers.get(session_id)
     if tracker:
         tracker.record(state)
+
+
+_VALID_STATES = {"FOCUSED", "OVERLOADED", "DISENGAGED"}
+
+
+@router.post("/override-state")
+async def override_state(body: dict) -> dict:
+    """
+    DEMO-01: Manually override the cognitive state for demo emergencies.
+
+    Body: { "session_id": "...", "state": "FOCUSED|OVERLOADED|DISENGAGED" }
+    Broadcasts a STATE_UPDATE immediately and triggers planner strategy update.
+    """
+    session_id = body.get("session_id", "")
+    state = body.get("state", "")
+
+    if state not in _VALID_STATES:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Invalid state '{state}'. Must be one of {sorted(_VALID_STATES)}",
+        )
+
+    session = session_store.get(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail=f"Session not found: {session_id}")
+
+    # Update store + state log
+    await session_store.update_state(session_id, state)
+    record_state_for_session(session_id, state)
+
+    # Broadcast STATE_UPDATE to frontend
+    from api.models import EEGBandPowers, StateUpdatePayload, WebSocketEnvelope
+    from api.websocket import manager
+
+    payload = StateUpdatePayload(
+        state=state,
+        confidence=1.0,
+        bands=EEGBandPowers(alpha=0.0, beta=0.0, theta=0.0, gamma=0.0, delta=0.0),
+    )
+    await manager.broadcast(session_id, WebSocketEnvelope.state_update(payload))
+
+    # Trigger immediate planner strategy update
+    from agents.planner import update_strategy_for_state
+    await update_strategy_for_state(session_id, state)
+
+    logger.info("State override: session=%s state=%s", session_id, state)
+    return {"session_id": session_id, "state": state, "overridden": True}
