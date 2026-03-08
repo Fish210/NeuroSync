@@ -23,8 +23,12 @@ from typing import Any
 
 from fastapi import WebSocket, WebSocketDisconnect
 
-from api.models import WebSocketEnvelope
+from api.models import ConversationTurnPayload, WebSocketEnvelope
 from session.store import session_store
+from agents.lock import speaker_running
+from agents.speaker import generate_response
+from voice.tts import synthesize_and_stream
+from voice.vad import VoiceActivityDetector
 
 logger = logging.getLogger(__name__)
 
@@ -81,6 +85,12 @@ class ConnectionManager:
 # Module-level singleton used by routes and the EEG processing loop
 manager = ConnectionManager()
 
+# Per-session VAD detector instances
+_vad_detectors: dict[str, "VoiceActivityDetector"] = {}
+
+# Per-session active TTS asyncio tasks (cancellable for barge-in)
+_active_tts_tasks: dict[str, asyncio.Task] = {}
+
 
 async def handle_websocket(websocket: WebSocket, session_id: str) -> None:
     """
@@ -103,6 +113,10 @@ async def handle_websocket(websocket: WebSocket, session_id: str) -> None:
 
     await manager.connect(websocket, session_id)
 
+    # Initialize per-session VAD
+    if session_id not in _vad_detectors:
+        _vad_detectors[session_id] = VoiceActivityDetector()
+
     # Send session restored event on connect/reconnect
     from api.models import SessionEventPayload
     await manager.broadcast(
@@ -119,6 +133,11 @@ async def handle_websocket(websocket: WebSocket, session_id: str) -> None:
 
     except WebSocketDisconnect:
         manager.disconnect(websocket, session_id)
+        # Cancel any active TTS for this session
+        task = _active_tts_tasks.pop(session_id, None)
+        if task and not task.done():
+            task.cancel()
+        _vad_detectors.pop(session_id, None)
         logger.info("WS client disconnected: session=%s", session_id)
 
     except Exception as exc:
@@ -149,16 +168,62 @@ async def _handle_client_message(session_id: str, raw: str) -> None:
 async def _handle_student_speech(session_id: str, payload: dict) -> None:
     """
     Student speech transcribed by Web Speech API.
-    Phase 1: echo back for testing.
-    Phase 2: forward to speaker agent.
+    Calls speaker agent → broadcasts CONVERSATION_TURN → streams TTS audio.
     """
     text = payload.get("text", "")
     if not text:
         return
+
     logger.info("Student speech [%s]: %s", session_id, text[:80])
-    # Phase 2: forward to speaker agent here
-    # For now, add to session conversation history
+
+    session = session_store.get(session_id)
+    if not session:
+        logger.warning("Student speech for unknown session: %s", session_id)
+        return
+
+    # Store student turn
     session_store.add_turn(session_id, "student", text)
+
+    # Generate tutor response under speaker lock
+    async with speaker_running(session_id):
+        result = await generate_response(
+            student_text=text,
+            current_state=session.current_state,
+            current_strategy=session.current_strategy.strategy,
+            topic=session.topic,
+            conversation=session.conversation,
+        )
+
+    # Store tutor turn
+    session_store.add_turn(
+        session_id,
+        "tutor",
+        result["response"],
+        strategy=result["strategy"],
+        tone=result["tone"],
+    )
+
+    # Broadcast CONVERSATION_TURN to frontend
+    envelope = WebSocketEnvelope.conversation_turn(
+        ConversationTurnPayload(
+            speaker="tutor",
+            strategy=result["strategy"],
+            tone=result["tone"],
+            text=result["response"],
+            triggered_by_state=session.current_state,
+        )
+    )
+    await manager.broadcast(session_id, envelope)
+
+    # Cancel any prior TTS and start new one
+    prior_task = _active_tts_tasks.pop(session_id, None)
+    if prior_task and not prior_task.done():
+        prior_task.cancel()
+
+    tts_task = asyncio.create_task(
+        synthesize_and_stream(result["response"], session_id, manager)
+    )
+    _active_tts_tasks[session_id] = tts_task
 
 
 async def _handle_whiteboard_delta(session_id: str, payload: dict) -> None:
@@ -177,12 +242,23 @@ async def _handle_whiteboard_delta(session_id: str, payload: dict) -> None:
 
 async def _handle_vad_signal(session_id: str, payload: dict) -> None:
     """
-    Voice activity detection signal from browser.
-    If level > 0.6 and tutor is currently speaking, send INTERRUPT.
-    Phase 3: wire to active TTS stream cancellation.
+    Voice activity detection signal from browser (every 100ms).
+    If barge-in detected while TTS is active, cancel TTS and send INTERRUPT.
     """
     level = float(payload.get("level", 0.0))
-    if level > 0.6:
-        # Phase 3: cancel active ElevenLabs stream here
-        # For now just log
-        logger.debug("VAD barge-in signal: level=%.2f session=%s", level, session_id)
+
+    vad = _vad_detectors.get(session_id)
+    if vad is None:
+        return
+
+    barge_in = vad.update(level)
+
+    if barge_in:
+        # Cancel active TTS
+        task = _active_tts_tasks.pop(session_id, None)
+        if task and not task.done():
+            task.cancel()
+            logger.info("VAD barge-in: cancelled TTS for session %s", session_id)
+
+        # Send INTERRUPT to frontend so it stops audio playback
+        await manager.broadcast(session_id, WebSocketEnvelope.interrupt())
