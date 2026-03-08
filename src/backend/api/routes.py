@@ -82,7 +82,8 @@ async def start_session(request: StartSessionRequest) -> StartSessionResponse:
     Phase 1: returns static lesson plan stub from config/backend/lesson_stub.json
     Phase 2: will call Featherless planner to generate plan dynamically
     """
-    lesson_data = _load_lesson_stub(request.topic)
+    from agents.planner import generate_lesson_plan
+    lesson_data = await generate_lesson_plan(request.topic)
 
     lesson_plan = LessonPlan(
         topic=lesson_data["topic"],
