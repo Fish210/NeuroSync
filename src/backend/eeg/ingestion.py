@@ -10,12 +10,20 @@ Threading model:
     - Thread writes to _ring_buffer (protected by _lock)
     - Thread puts event dicts onto asyncio.Queue via loop.call_soon_threadsafe
     - Async code reads from queue; never touches LSL inlet directly
+
+Simulation mode:
+    Set environment variable EEG_SIMULATE=1 (or true/yes) to run without a
+    real Muse headband. The ingestion thread will generate synthetic EEG
+    samples that cycle through FOCUSED → OVERLOADED → DISENGAGED states
+    every ~10 seconds, allowing full end-to-end demo without hardware.
 """
 from __future__ import annotations
 
 import asyncio
 import collections
 import logging
+import math
+import os
 import threading
 import time
 from dataclasses import dataclass, field
@@ -24,6 +32,10 @@ from typing import Any
 import numpy as np
 
 logger = logging.getLogger(__name__)
+
+# Set EEG_SIMULATE=1 to bypass LSL and emit synthetic EEG data for demos
+_EEG_SIMULATE_ENV = os.getenv("EEG_SIMULATE", "0").lower()
+EEG_SIMULATE = _EEG_SIMULATE_ENV in ("1", "true", "yes")
 
 # Muse 2 / Muse S LSL stream names
 EEG_STREAM_TYPE = "EEG"
@@ -135,6 +147,11 @@ class EEGIngestion:
 
     def _run(self) -> None:
         """Main ingestion loop. Runs in dedicated thread."""
+        if EEG_SIMULATE:
+            logger.info("EEG simulation mode active — no Muse hardware required")
+            self._run_simulated()
+            return
+
         try:
             inlet = self._resolve_eeg_stream()
         except RuntimeError as exc:
@@ -147,6 +164,79 @@ class EEGIngestion:
 
         while self._running:
             self._pull_eeg(inlet)
+
+    # Simulation interval in seconds (emit a new synthetic window this often)
+    _SIM_INTERVAL: float = 0.125  # ~8 Hz, matching muselsl chunk rate
+
+    def _run_simulated(self) -> None:
+        """
+        Emit synthetic EEG samples that cycle FOCUSED → OVERLOADED → DISENGAGED.
+        Each state lasts ~10 seconds (80 windows × 0.125 s), giving the frontend
+        enough time to observe the adaptive response before the next state flip.
+
+        Signal characteristics per state (relative band powers):
+            FOCUSED:    high beta, moderate alpha, low theta
+            OVERLOADED: high beta+gamma, suppressed alpha
+            DISENGAGED: high theta+alpha, low beta
+        """
+        SAMPLE_RATE = 256.0
+        CHUNK_SAMPLES = 32  # emit 32 samples per interval (matching real pull_max)
+        STATE_CYCLE = ["FOCUSED", "OVERLOADED", "DISENGAGED"]
+        WINDOWS_PER_STATE = 80  # ~10 seconds at 0.125 s intervals
+
+        # Band-power targets per state [delta, theta, alpha, beta, gamma]
+        # Values are the dominant amplitude in µV for each band injection
+        _STATE_PARAMS: dict[str, dict] = {
+            "FOCUSED":    {"beta_amp": 8.0,  "theta_amp": 2.0, "alpha_amp": 5.0,  "gamma_amp": 2.0},
+            "OVERLOADED": {"beta_amp": 10.0, "theta_amp": 3.0, "alpha_amp": 1.5,  "gamma_amp": 7.0},
+            "DISENGAGED": {"beta_amp": 2.0,  "theta_amp": 8.0, "alpha_amp": 9.0,  "gamma_amp": 1.0},
+        }
+
+        self._emit({"type": "eeg_connected"})
+        logger.info("Simulated EEG stream connected")
+
+        state_idx = 0
+        window_count = 0
+        t = 0.0  # running time index
+
+        while self._running:
+            state = STATE_CYCLE[state_idx % len(STATE_CYCLE)]
+            params = _STATE_PARAMS[state]
+
+            # Generate CHUNK_SAMPLES synthetic EEG samples (4 channels)
+            samples: list = []
+            timestamps: list = []
+            for _ in range(CHUNK_SAMPLES):
+                ts = t / SAMPLE_RATE
+                # Mix sinusoids at band centre frequencies + small noise
+                beta_sig   = params["beta_amp"]  * math.sin(2 * math.pi * 20.0 * ts)
+                theta_sig  = params["theta_amp"] * math.sin(2 * math.pi * 6.0  * ts)
+                alpha_sig  = params["alpha_amp"] * math.sin(2 * math.pi * 10.0 * ts)
+                gamma_sig  = params["gamma_amp"] * math.sin(2 * math.pi * 40.0 * ts)
+                noise = float(np.random.normal(0, 0.5))
+                val = beta_sig + theta_sig + alpha_sig + gamma_sig + noise
+                # 4 EEG channels + 1 AUX = 5 channels
+                samples.append([val, val * 0.95, val * 1.05, val * 0.98, 0.0])
+                timestamps.append(time.time())
+                t += 1.0
+
+            now = time.time()
+            with self._state.lock:
+                self._state.last_packet_time = now
+                for sample, ts in zip(samples, timestamps):
+                    arr = np.asarray(sample, dtype=np.float32)
+                    self._state.ring_buffer.append(EEGSample(channels=arr, timestamp=ts))
+
+            self._emit({"type": "eeg_data", "count": len(samples)})
+
+            window_count += 1
+            if window_count >= WINDOWS_PER_STATE:
+                window_count = 0
+                state_idx += 1
+                next_state = STATE_CYCLE[state_idx % len(STATE_CYCLE)]
+                logger.info("EEG simulation: transitioning to state %s", next_state)
+
+            time.sleep(self._SIM_INTERVAL)
 
     def _resolve_eeg_stream(self):
         """Resolve LSL EEG stream. Raises RuntimeError on timeout."""

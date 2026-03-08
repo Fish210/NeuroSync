@@ -1,3 +1,5 @@
+"use client";
+
 import { motion, AnimatePresence } from "framer-motion";
 import type { SessionSummary } from "@/lib/api";
 
@@ -121,7 +123,13 @@ export default function PostSessionSummary({
           )}
         </div>
 
-        <div className="border-t border-white/10 px-6 py-4 flex justify-end">
+        <div className="border-t border-white/10 px-6 py-4 flex items-center justify-between">
+          <button
+            onClick={() => window.print()}
+            className="rounded-2xl border border-white/10 bg-slate-800/60 px-5 py-2.5 text-sm font-semibold text-slate-300 hover:bg-slate-700/60 transition cursor-pointer"
+          >
+            Export PDF
+          </button>
           <button
             onClick={onDismiss}
             className="rounded-2xl bg-white px-6 py-2.5 text-sm font-semibold text-slate-950 hover:opacity-90 transition cursor-pointer"

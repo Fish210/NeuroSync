@@ -99,6 +99,9 @@ export function useNeuroSyncSocket() {
             message.payload.data,
             message.payload.is_final,
           );
+          if (message.payload.is_final) {
+            setSpeakingState("idle");
+          }
         }
 
         if (message.event_type === "INTERRUPT") {
@@ -186,15 +189,20 @@ export function useNeuroSyncSocket() {
     }
   }, [log]);
 
+  const studentBlockCountRef = useRef(0);
+
   const sendWhiteboardText = useCallback((text: string) => {
     if (clientRef.current === null) return;
+    const blockIndex = studentBlockCountRef.current++;
+    // Stack student blocks vertically from y:560, each 56px apart
+    const yPos = 560 + (blockIndex % 3) * 56;
     clientRef.current.send({
       event_type: "STUDENT_WHITEBOARD_DELTA",
       payload: {
         author: "student",
         type: "text",
         content: text,
-        position: { x: 20, y: 620 },
+        position: { x: 20, y: yPos },
         id: `student-${Date.now()}`,
       },
     });

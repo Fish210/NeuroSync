@@ -21,10 +21,14 @@ export function TextGenerateEffect({
   useEffect(() => {
     animate(
       "span",
-      { opacity: 1, filter: filter ? "blur(0px)" : "none" },
+      {
+        opacity: 1,
+        ...(filter ? { filter: "blur(0px)" } : {}),
+      },
       { duration, delay: stagger(0.08) }
     )
-  }, [scope.current])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [animate])
 
   return (
     <div className={cn("leading-relaxed", className)}>

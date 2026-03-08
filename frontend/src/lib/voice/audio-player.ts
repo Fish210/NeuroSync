@@ -32,6 +32,7 @@ export class AudioPlayer {
     }
 
     const total = this.chunks.reduce((sum, c) => sum + c.length, 0);
+    if (total === 0) return;
     const merged = new Uint8Array(total);
     let offset = 0;
     for (const chunk of this.chunks) {
@@ -63,6 +64,7 @@ export class AudioPlayer {
   interrupt(): void {
     this._interrupted = true;
     this.chunks = [];
+    this._playingPromise = null;
     try {
       this.source?.stop();
     } catch (_) {}
