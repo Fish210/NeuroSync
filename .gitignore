@@ -10,10 +10,14 @@ __pycache__/
 .venv/
 *.egg-info/
 
-# Environment
+# Environment — ignore real env files, allow .env.example everywhere
 .env
 .env.*
-/config/backend/.env.example
+!.env.example
+!**/.env.example
+
+# Logs
+*.log
 
 # macOS
 .DS_Store
