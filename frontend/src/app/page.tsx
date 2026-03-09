@@ -58,7 +58,7 @@ export default function HomePage() {
   const isActive = status === "open" || status === "connecting" || status === "starting";
 
   return (
-    <main className="min-h-screen bg-slate-950 dark:bg-slate-950 text-white overflow-hidden transition-colors duration-300">
+    <main className="min-h-screen bg-slate-100 dark:bg-slate-950 text-slate-900 dark:text-white overflow-hidden transition-colors duration-300">
       {/* Post-session summary overlay */}
       <AnimatePresence>
         {showSummary && summary && (
@@ -93,7 +93,7 @@ export default function HomePage() {
 
       <div className="relative z-10 mx-auto max-w-[1700px] px-4 py-4">
         {/* Header — always visible */}
-        <header className="mb-4 rounded-[24px] border border-white/10 bg-slate-900/80 px-6 py-4 shadow-xl backdrop-blur">
+        <header className="mb-4 rounded-[24px] border border-slate-200 dark:border-white/10 bg-white/90 dark:bg-slate-900/80 px-6 py-4 shadow-xl backdrop-blur">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
             {/* Left: Logo + title + topic */}
             <div className="flex items-center gap-4">
@@ -103,8 +103,8 @@ export default function HomePage() {
                 </svg>
               </div>
               <div>
-                <h1 className="text-2xl font-bold tracking-tight text-white">NeuroSync</h1>
-                <p className="text-xs text-slate-400 mt-0.5">Neuroadaptive AI tutoring</p>
+                <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-white">NeuroSync</h1>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Neuroadaptive AI tutoring</p>
               </div>
               {isActive && topic && (
                 <div className="rounded-lg border border-cyan-400/20 bg-cyan-400/5 px-3 py-1 text-xs text-cyan-300">
@@ -117,20 +117,20 @@ export default function HomePage() {
             <div className="flex items-center gap-3">
               <ThemeToggle />
 
-              <div className="flex items-center gap-2 rounded-xl border border-white/10 bg-slate-950/60 px-3 py-2 text-xs">
+              <div className="flex items-center gap-2 rounded-xl border border-slate-200 dark:border-white/10 bg-slate-100 dark:bg-slate-950/60 px-3 py-2 text-xs">
                 <span className={`h-2 w-2 rounded-full ${
                   eegStatus === "connected"
                     ? "bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.8)]"
                     : eegStatus === "disconnected"
                     ? "bg-rose-400 animate-pulse"
-                    : "bg-slate-600"
+                    : "bg-slate-400 dark:bg-slate-600"
                 }`} />
-                <span className="text-slate-300">
+                <span className="text-slate-700 dark:text-slate-300">
                   EEG {eegStatus === "connected" ? "Connected" : eegStatus === "disconnected" ? "Disconnected" : "—"}
                 </span>
               </div>
 
-              <div className="flex items-center gap-2 rounded-xl border border-white/10 bg-slate-950/60 px-3 py-2 text-xs">
+              <div className="flex items-center gap-2 rounded-xl border border-slate-200 dark:border-white/10 bg-slate-100 dark:bg-slate-950/60 px-3 py-2 text-xs">
                 <span className={`h-2 w-2 rounded-full ${
                   status === "open"
                     ? "bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.8)]"
@@ -138,9 +138,9 @@ export default function HomePage() {
                     ? "bg-amber-400 animate-pulse"
                     : status === "error"
                     ? "bg-rose-400"
-                    : "bg-slate-600"
+                    : "bg-slate-400 dark:bg-slate-600"
                 }`} />
-                <span className="capitalize text-slate-300">{status}</span>
+                <span className="capitalize text-slate-700 dark:text-slate-300">{status}</span>
               </div>
 
               {isActive && (
@@ -190,7 +190,7 @@ export default function HomePage() {
                     transition={{ duration: 0.2 }}
                     className="mb-4 overflow-hidden"
                   >
-                    <div className="rounded-[20px] border border-white/10 bg-slate-900/80 px-4 py-3 backdrop-blur flex items-center gap-3">
+                    <div className="rounded-[20px] border border-slate-200 dark:border-white/10 bg-white/80 dark:bg-slate-900/80 px-4 py-3 backdrop-blur flex items-center gap-3">
                       <span className="text-[10px] uppercase tracking-[0.15em] text-slate-500">Demo Override:</span>
                       {(["FOCUSED", "OVERLOADED", "DISENGAGED"] as const).map((s) => (
                         <button
@@ -216,17 +216,17 @@ export default function HomePage() {
               <div className="grid grid-cols-1 gap-4 lg:grid-cols-12">
                 {/* Left rail */}
                 <aside className="lg:col-span-2 space-y-4">
-                  <div className="rounded-[20px] border border-white/10 bg-slate-900/80 p-3 shadow-lg backdrop-blur">
+                  <div className="rounded-[20px] border border-slate-200 dark:border-white/10 bg-white/80 dark:bg-slate-900/80 p-3 shadow-lg backdrop-blur">
                     <CognitiveStateIndicator
                       state={currentState}
                       confidence={stateUpdate?.confidence}
                       strategy={currentStrategy || undefined}
                     />
                   </div>
-                  <div className="rounded-[20px] border border-white/10 bg-slate-900/80 p-3 shadow-lg backdrop-blur">
+                  <div className="rounded-[20px] border border-slate-200 dark:border-white/10 bg-white/80 dark:bg-slate-900/80 p-3 shadow-lg backdrop-blur">
                     <EEGBandBars bands={stateUpdate?.bands} />
                   </div>
-                  <div className="rounded-[20px] border border-white/10 bg-slate-900/80 p-4 shadow-lg backdrop-blur">
+                  <div className="rounded-[20px] border border-slate-200 dark:border-white/10 bg-white/80 dark:bg-slate-900/80 p-4 shadow-lg backdrop-blur">
                     <EEGConfidenceChart data={confidenceHistory} />
                   </div>
                 </aside>
@@ -242,10 +242,10 @@ export default function HomePage() {
 
                 {/* Right rail */}
                 <aside className="lg:col-span-3 space-y-4">
-                  <div className="rounded-[20px] border border-white/10 bg-slate-900/80 p-3 shadow-lg backdrop-blur">
+                  <div className="rounded-[20px] border border-slate-200 dark:border-white/10 bg-white/80 dark:bg-slate-900/80 p-3 shadow-lg backdrop-blur">
                     <ConversationTranscript turns={turns} speakingState={speakingState} />
                   </div>
-                  <div className="rounded-[20px] border border-white/10 bg-slate-900/80 p-3 shadow-lg backdrop-blur">
+                  <div className="rounded-[20px] border border-slate-200 dark:border-white/10 bg-white/80 dark:bg-slate-900/80 p-3 shadow-lg backdrop-blur">
                     <AdaptationLog entries={adaptationLog} />
                   </div>
                 </aside>

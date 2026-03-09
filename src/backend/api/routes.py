@@ -77,6 +77,38 @@ async def health() -> dict:
     }
 
 
+@router.get("/eeg-status")
+async def eeg_status() -> dict:
+    """
+    Returns real-time EEG headband connection status.
+    Used by the frontend SessionWizard before session start.
+    """
+    from api.main import get_eeg_ingestion
+    ingestion = get_eeg_ingestion()
+
+    if ingestion is None:
+        return {"connected": False, "status": "initializing"}
+
+    connected = ingestion.is_connected
+
+    # Check if we've received data recently (within 3 seconds)
+    last_packet = getattr(ingestion, 'last_packet_time', 0)
+    recently_active = (time.time() - last_packet) < 3.0 if last_packet else False
+
+    if connected and recently_active:
+        status = "connected"
+    elif connected:
+        status = "connected"
+    else:
+        status = "disconnected"
+
+    return {
+        "connected": connected,
+        "status": status,
+        "last_packet_age_seconds": round(time.time() - last_packet, 1) if last_packet else None,
+    }
+
+
 @router.post("/start-session", response_model=StartSessionResponse)
 async def start_session(request: StartSessionRequest) -> StartSessionResponse:
     """

@@ -92,6 +92,18 @@ const httpServer = http.createServer((req, res) => {
         res.writeHead(200, { "Content-Type": "application/json" });
         res.end(JSON.stringify({ status: "ok", sessions: 0, timestamp: Date.now() / 1000 }));
 
+      } else if (req.method === "GET" && req.url === "/eeg-status") {
+        res.writeHead(200, { "Content-Type": "application/json" });
+        // Mock: simulate EEG connected after 5 seconds of mock server being up
+        const uptime = process.uptime();
+        const connected = uptime > 5;
+        res.end(JSON.stringify({
+          connected,
+          status: connected ? "connected" : "disconnected",
+          last_packet_age_seconds: connected ? 0.5 : null,
+        }));
+        console.log(`[REST] GET /eeg-status → connected=${connected}`);
+
       } else {
         res.writeHead(404);
         res.end("Not found");
@@ -221,7 +233,7 @@ wss.on("connection", (ws, req) => {
     try {
       const msg = JSON.parse(data.toString());
       console.log(`[WS] Received from client: event_type=${msg.event_type}`);
-    } catch (_) {}
+    } catch (_) { }
   });
 
   ws.on("close", () => {

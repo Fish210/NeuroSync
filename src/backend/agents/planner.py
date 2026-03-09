@@ -19,27 +19,34 @@ logger = logging.getLogger(__name__)
 
 FEATHERLESS_API_KEY = os.getenv("FEATHERLESS_API_KEY", "")
 FEATHERLESS_BASE_URL = os.getenv("FEATHERLESS_BASE_URL", "https://api.featherless.ai/v1")
-PLANNER_MODEL = os.getenv("PLANNER_MODEL", "meta-llama/Meta-Llama-3.1-70B-Instruct")
+PLANNER_MODEL = os.getenv("PLANNER_MODEL", "meta-llama/Llama-3.3-70B-Instruct")
 
-_SYSTEM_PROMPT = """You are a curriculum designer. When given a topic, return ONLY valid JSON — no explanation, no markdown fences, no extra text.
+_SYSTEM_PROMPT = """You are an expert curriculum designer specializing in adaptive learning. Given a topic a student wants to learn, create a pedagogically sound lesson plan optimized for real-time neuroadaptive delivery — the AI tutor adjusts pacing and depth every few seconds based on EEG cognitive state (FOCUSED / OVERLOADED / DISENGAGED).
 
-The JSON must match this exact schema:
+Design principles:
+- Apply Bloom's Taxonomy: start with recall/comprehension (difficulty 1), build to application/analysis (difficulty 2), end with synthesis/evaluation or practice (difficulty 3)
+- Titles must be concrete and specific — NOT generic ("Introduction to X") but specific and evocative ("What a derivative means geometrically: the slope of the tangent line")
+- Each block is teachable in 5–10 minutes; natural breakpoints between blocks
+- Build incrementally — each block assumes mastery of the prior one
+- Last block is always a practice or "check for understanding" exercise
+
+Return ONLY valid JSON — no markdown fences, no explanation, no extra text:
 {
-  "topic": "<topic string>",
+  "topic": "<exact topic string>",
   "blocks": [
-    {"id": "block-1", "title": "<specific title>", "difficulty": 1},
-    {"id": "block-2", "title": "<specific title>", "difficulty": 2},
-    {"id": "block-3", "title": "<specific title>", "difficulty": 2},
-    {"id": "block-4", "title": "<specific title>", "difficulty": 3}
+    {"id": "block-1", "title": "<specific concrete title>", "difficulty": 1},
+    {"id": "block-2", "title": "<specific concrete title>", "difficulty": 2},
+    {"id": "block-3", "title": "<specific concrete title>", "difficulty": 2},
+    {"id": "block-4", "title": "<specific concrete title>", "difficulty": 3}
   ],
   "current_block": "block-1"
 }
 
-Rules:
-- 3 to 5 blocks, ascending difficulty (1=introductory, 2=core, 3=advanced/practice)
-- Each title must be specific to the topic, not generic
-- difficulty must be an integer 1, 2, or 3
-- Return ONLY the JSON object, nothing else"""
+Hard constraints:
+- 4 to 6 blocks total, ascending difficulty
+- difficulty is an integer: 1 (foundational), 2 (core), or 3 (advanced/practice)
+- "current_block" is always "block-1"
+- Return ONLY the raw JSON object — nothing else"""
 
 
 def _fallback_plan(topic: str) -> dict:
@@ -92,10 +99,10 @@ async def generate_lesson_plan(topic: str) -> dict:
             model=PLANNER_MODEL,
             messages=[
                 {"role": "system", "content": _SYSTEM_PROMPT},
-                {"role": "user", "content": f'Generate a lesson plan for: "{topic}"'},
+                {"role": "user", "content": f'Create an adaptive lesson plan for a student who wants to learn: "{topic}"'},
             ],
-            temperature=0.3,
-            max_tokens=600,
+            temperature=0.2,
+            max_tokens=800,
             timeout=20.0,
         )
 

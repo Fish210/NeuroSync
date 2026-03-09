@@ -105,6 +105,7 @@ class EEGIngestion:
         self._state = IngestionState()
         self._running = False
         self._thread: threading.Thread | None = None
+        self._is_connected: bool = False
 
     def start(self) -> None:
         """Start the ingestion thread. Call once per session."""
@@ -131,6 +132,10 @@ class EEGIngestion:
     def last_packet_time(self) -> float:
         return self._state.last_packet_time
 
+    @property
+    def is_connected(self) -> bool:
+        return self._is_connected
+
     def get_recent_samples(self, n: int = 512) -> list[EEGSample]:
         """Thread-safe snapshot of the most recent n samples."""
         with self._state.lock:
@@ -156,9 +161,11 @@ class EEGIngestion:
             inlet = self._resolve_eeg_stream()
         except RuntimeError as exc:
             logger.error("Failed to find EEG stream: %s", exc)
+            self._is_connected = False
             self._emit({"type": "eeg_disconnected", "reason": str(exc)})
             return
 
+        self._is_connected = True
         self._emit({"type": "eeg_connected"})
         logger.info("EEG inlet connected")
 
@@ -192,6 +199,7 @@ class EEGIngestion:
             "DISENGAGED": {"beta_amp": 2.0,  "theta_amp": 8.0, "alpha_amp": 9.0,  "gamma_amp": 1.0},
         }
 
+        self._is_connected = True
         self._emit({"type": "eeg_connected"})
         logger.info("Simulated EEG stream connected")
 

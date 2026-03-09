@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 
 FEATHERLESS_API_KEY = os.getenv("FEATHERLESS_API_KEY", "")
 FEATHERLESS_BASE_URL = os.getenv("FEATHERLESS_BASE_URL", "https://api.featherless.ai/v1")
-SPEAKER_MODEL = os.getenv("SPEAKER_MODEL", "Qwen/Qwen2.5-7B-Instruct")
+SUMMARIZER_MODEL = os.getenv("SUMMARIZER_MODEL", "meta-llama/Llama-3.3-70B-Instruct")
 
 
 def _template_narrative(
@@ -69,19 +69,26 @@ async def generate_narrative(
         focused_pct = int(state_breakdown.get("FOCUSED", 0) / max(duration_seconds, 1) * 100)
         overloaded_pct = int(state_breakdown.get("OVERLOADED", 0) / max(duration_seconds, 1) * 100)
 
-        topic_lines = "\n".join(
-            f"- {t['title']}: {t.get('comprehension', 'unknown')} comprehension"
-            for t in topics_covered
+        system_prompt = (
+            "You are a warm, encouraging learning coach writing a brief post-session summary "
+            "for a student. Be specific about what they did well and honest about areas to revisit. "
+            "Write in second person ('You spent...', 'You showed...'). "
+            "Plain text only — no bullet points, no markdown. 2-3 sentences maximum."
         )
 
-        prompt = (
-            f"Write a 2-3 sentence summary of this tutoring session.\n\n"
-            f"Topic: {topic}\n"
-            f"Duration: {minutes} minutes\n"
-            f"Student was focused {focused_pct}% of the time, overloaded {overloaded_pct}%.\n"
-            f"Topics covered:\n{topic_lines}\n\n"
-            f"Write a brief, encouraging summary for the student. Plain text only, no bullet points."
+        user_prompt = (
+            f"Write a post-session summary for a student who just finished studying '{topic}'.\n\n"
+            f"Session stats:\n"
+            f"- Duration: {minutes} minutes\n"
+            f"- Focused: {focused_pct}% of the time\n"
+            f"- Overloaded: {overloaded_pct}% of the time\n"
+            f"- Disengaged: {100 - focused_pct - overloaded_pct}% of the time\n"
         )
+        if topics_covered:
+            user_prompt += "\nTopics and comprehension:\n" + "\n".join(
+                f"- {t['title']}: {t.get('comprehension', 'unknown').replace('_', ' ')}"
+                for t in topics_covered
+            )
 
         client = AsyncOpenAI(
             api_key=FEATHERLESS_API_KEY,
@@ -89,11 +96,14 @@ async def generate_narrative(
         )
 
         response = await client.chat.completions.create(
-            model=SPEAKER_MODEL,
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0.6,
-            max_tokens=120,
-            timeout=8.0,
+            model=SUMMARIZER_MODEL,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+            temperature=0.5,
+            max_tokens=150,
+            timeout=15.0,
         )
 
         narrative = (response.choices[0].message.content or "").strip()

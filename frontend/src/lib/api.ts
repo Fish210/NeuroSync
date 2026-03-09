@@ -76,3 +76,13 @@ export async function overrideState(sessionId: string, state: string): Promise<v
     throw new Error(`override-state failed: ${res.status} ${text}`);
   }
 }
+
+export async function getEegStatus(): Promise<{ connected: boolean; status: string }> {
+  try {
+    const res = await fetch(`${API_BASE}/eeg-status`);
+    if (!res.ok) return { connected: false, status: "unknown" };
+    return res.json();
+  } catch {
+    return { connected: false, status: "unknown" };
+  }
+}

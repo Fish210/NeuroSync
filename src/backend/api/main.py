@@ -43,6 +43,11 @@ _eeg_watchdog_task: asyncio.Task | None = None
 _eeg_queue: asyncio.Queue | None = None
 _active_session_id: str | None = None  # Phase 1: single-session model
 _last_planner_trigger: float = 0.0        # timestamp of last planner strategy update
+
+
+def get_eeg_ingestion():
+    """Return the current EEG ingestion instance (may be None before startup)."""
+    return _eeg_ingestion
 PLANNER_COOLDOWN_SECONDS: float = 10.0    # minimum seconds between planner updates
 
 # Minimum SVM confidence to count a window toward the dwell-time filter.

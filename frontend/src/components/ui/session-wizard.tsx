@@ -1,10 +1,11 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import { CircleCheck } from "lucide-react"
 import { LiquidButton } from "@/components/ui/liquid-glass-button"
 import { cn } from "@/lib/utils"
+import { getEegStatus } from "@/lib/api"
 
 interface SessionWizardProps {
   onStart: (topic: string) => void
@@ -14,11 +15,33 @@ interface SessionWizardProps {
 
 const STEP_LABELS = ["Topic", "EEG Check", "Start"]
 
-export function SessionWizard({ onStart, eegStatus, status }: SessionWizardProps) {
+export function SessionWizard({ onStart, eegStatus: _eegStatus, status }: SessionWizardProps) {
   const [step, setStep] = useState(1)
-  const [topic, setTopic] = useState("derivatives")
+  const [topic, setTopic] = useState("")
+  const [liveEegStatus, setLiveEegStatus] = useState<"connected" | "disconnected" | "unknown">("unknown")
+  const [eegPolling, setEegPolling] = useState(false)
 
   const isStarting = status === "starting"
+
+  useEffect(() => {
+    if (step !== 2) return
+
+    setEegPolling(true)
+    setLiveEegStatus("unknown")
+
+    const poll = async () => {
+      const result = await getEegStatus()
+      setLiveEegStatus(result.connected ? "connected" : "disconnected")
+    }
+
+    poll() // immediate first check
+    const interval = setInterval(poll, 2000) // poll every 2s
+
+    return () => {
+      clearInterval(interval)
+      setEegPolling(false)
+    }
+  }, [step])
 
   const handleContinue = () => {
     if (step < 3) setStep(step + 1)
@@ -111,39 +134,44 @@ export function SessionWizard({ onStart, eegStatus, status }: SessionWizardProps
                 transition={{ duration: 0.2 }}
                 className="space-y-4"
               >
-                <div className="text-sm font-medium text-slate-300">EEG Headband Status</div>
+                <div className="flex items-center justify-between">
+                  <div className="text-sm font-medium text-slate-300">EEG Headband Status</div>
+                  {eegPolling && liveEegStatus === "unknown" && (
+                    <span className="text-[10px] text-slate-500 animate-pulse">checking…</span>
+                  )}
+                </div>
                 <div className={cn(
                   "flex items-center gap-3 rounded-2xl border px-4 py-4",
-                  eegStatus === "connected"
+                  liveEegStatus === "connected"
                     ? "border-emerald-400/25 bg-emerald-400/5"
-                    : eegStatus === "disconnected"
+                    : liveEegStatus === "disconnected"
                     ? "border-rose-400/25 bg-rose-400/5"
                     : "border-white/10 bg-slate-800/40"
                 )}>
                   <span className={cn(
                     "h-3 w-3 rounded-full flex-shrink-0",
-                    eegStatus === "connected" ? "bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.8)]" :
-                    eegStatus === "disconnected" ? "bg-rose-400 animate-pulse" : "bg-slate-500 animate-pulse"
+                    liveEegStatus === "connected" ? "bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.8)]" :
+                    liveEegStatus === "disconnected" ? "bg-rose-400 animate-pulse" : "bg-slate-500 animate-pulse"
                   )} />
                   <div>
                     <div className={cn(
                       "text-sm font-semibold",
-                      eegStatus === "connected" ? "text-emerald-300" :
-                      eegStatus === "disconnected" ? "text-rose-300" : "text-slate-300"
+                      liveEegStatus === "connected" ? "text-emerald-300" :
+                      liveEegStatus === "disconnected" ? "text-rose-300" : "text-slate-300"
                     )}>
-                      {eegStatus === "connected" ? "Muse Connected" :
-                       eegStatus === "disconnected" ? "Muse Disconnected" : "Looking for Muse…"}
+                      {liveEegStatus === "connected" ? "Muse Connected" :
+                       liveEegStatus === "disconnected" ? "Muse Disconnected" : "Searching for Muse headband…"}
                     </div>
                     <div className="text-xs text-slate-500 mt-0.5">
-                      {eegStatus === "connected"
+                      {liveEegStatus === "connected"
                         ? "EEG data streaming — ready for adaptive tutoring"
-                        : eegStatus === "disconnected"
+                        : liveEegStatus === "disconnected"
                         ? "Connect your Muse headband via muselsl"
                         : "Start muselsl streaming, or proceed without EEG"}
                     </div>
                   </div>
                 </div>
-                {eegStatus !== "connected" && (
+                {liveEegStatus !== "connected" && (
                   <p className="text-xs text-slate-500">You can proceed without EEG — the tutor will still adapt based on your responses.</p>
                 )}
               </motion.div>
@@ -164,8 +192,8 @@ export function SessionWizard({ onStart, eegStatus, status }: SessionWizardProps
                   </div>
                   <div className="flex items-center justify-between text-sm">
                     <span className="text-slate-500">EEG</span>
-                    <span className={eegStatus === "connected" ? "text-emerald-300" : "text-slate-400"}>
-                      {eegStatus === "connected" ? "Connected" : "No hardware"}
+                    <span className={liveEegStatus === "connected" ? "text-emerald-300" : "text-slate-400"}>
+                      {liveEegStatus === "connected" ? "Connected" : "No hardware"}
                     </span>
                   </div>
                 </div>
